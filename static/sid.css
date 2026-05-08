@@ -70,3 +70,29 @@ footer {
   border-top: 1px solid #333;
   margin-top: 3rem;
 }
+
+table.items {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 0.5rem;
+}
+
+table.items th, table.items td {
+  text-align: left;
+  padding: 0.4rem 0.6rem;
+  border-bottom: 1px solid #2e2e2e;
+}
+
+table.items th {
+  color: var(--muted);
+  font-weight: 500;
+  font-size: 0.85em;
+}
+
+pre {
+  background: #2e2e2e;
+  padding: 0.6rem 0.8rem;
+  border-radius: 4px;
+  overflow-x: auto;
+  font-size: 0.85em;
+}

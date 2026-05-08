@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "item_id": "1141975",
+  "lang": "norwegian",
+  "fields": {
+    "about": {
+      "value": "",
+      "source_hash": "",
+      "stale": true,
+      "manually_edited": false,
+      "last_translated_at": ""
+    },
+    "short_description": {
+      "value": "",
+      "source_hash": "",
+      "stale": true,
+      "manually_edited": false,
+      "last_translated_at": ""
+    },
+    "sysreqs_min_osversion": {
+      "value": "",
+      "source_hash": "",
+      "stale": true,
+      "manually_edited": false,
+      "last_translated_at": ""
+    },
+    "sysreqs_min_processor": {
+      "value": "",
+      "source_hash": "",
+      "stale": true,
+      "manually_edited": false,
+      "last_translated_at": ""
+    }
+  },
+  "updated_at": "2026-05-08T11:32:29"
+}

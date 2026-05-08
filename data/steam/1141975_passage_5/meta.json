@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "item_id": "1141975",
+  "platform": "steam",
+  "name": "Passage 5",
+  "master_lang": "german",
+  "active_languages": [
+    "english",
+    "german"
+  ],
+  "early_access": false,
+  "notes": "",
+  "created_at": "2026-05-08T11:32:28",
+  "updated_at": "2026-05-08T11:32:29"
+}

@@ -263,8 +263,26 @@ def api_put_early_access(platform: str, item_id: str, body: _EarlyAccessBody) ->
     return {"ok": True, **result}
 
 
+_SUPPORTED_PLATFORMS = {"steam"}
+_SUPPORTED_MASTER_LANGS = {"german"}
+
+
 @app.post("/api/items")
 def api_post_item(body: _CreateItemBody) -> dict:
+    # Phase 1 ist bewusst auf Steam + German-Master beschraenkt. Master_de.json
+    # ist der vereinbarte Speicherort, andere Plattformen/Sprachen haben noch
+    # keinen geprueften Datenfluss. Direkte API-Aufrufe duerfen das nicht
+    # umgehen — die UI exponiert die Optionen ohnehin nicht.
+    if body.platform not in _SUPPORTED_PLATFORMS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Plattform nicht unterstuetzt: {body.platform!r} (erlaubt: {sorted(_SUPPORTED_PLATFORMS)})",
+        )
+    if body.master_lang not in _SUPPORTED_MASTER_LANGS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Master-Sprache nicht unterstuetzt: {body.master_lang!r} (erlaubt: {sorted(_SUPPORTED_MASTER_LANGS)})",
+        )
     try:
         idir = edit_ops.create_item(
             DATA_ROOT,

@@ -223,9 +223,17 @@ def cmd_import(steam_json: Path, name: str | None, force: bool, data_root: Path,
           f"(manuelle Edits geschuetzt: {skipped_protected_total})")
 
     # --- Meta -----------------------------------------------------------------
+    # active_languages werden bei jedem Import (auch Re-Import) aus dem
+    # aktuellen storepage_*.json neu berechnet. Sonst zeigt die UI veraltete
+    # Sprachenlisten, wenn ein spaeterer Import andere Sprachen liefert.
+    active_from_steam = [
+        lang for lang in steam_codes.CODES
+        if any(_extract_field_values(languages.get(lang, {})).values())
+    ]
     meta_file = storage.meta_path(idir)
     if meta_file.exists():
         meta = schema.ItemMeta(**storage.read_json(meta_file))
+        meta.active_languages = active_from_steam
         meta.updated_at = storage.now_iso()
     else:
         meta = schema.ItemMeta(
@@ -233,10 +241,7 @@ def cmd_import(steam_json: Path, name: str | None, force: bool, data_root: Path,
             platform=platform,
             name=name or f"Item {item_id}",
             master_lang=steam_codes.MASTER_CODE,
-            active_languages=[
-                lang for lang in steam_codes.CODES
-                if any(_extract_field_values(languages.get(lang, {})).values())
-            ],
+            active_languages=active_from_steam,
             early_access=False,
             created_at=storage.now_iso(),
             updated_at=storage.now_iso(),

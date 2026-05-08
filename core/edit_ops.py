@@ -49,6 +49,20 @@ def write_translation(idir: Path, t: schema.TranslationDocument) -> None:
     storage.write_json_atomic(storage.translation_path(idir, t.lang), t.model_dump())
 
 
+def _existing_translation_langs(idir: Path) -> list[str]:
+    """Listet alle Sprachen, fuer die bereits eine translations/<lang>.json existiert.
+
+    Why: Master-Edits und EA-Toggles muessen alle vorhandenen Translation-
+    Files re-stalen / erweitern, nicht nur die in meta.active_languages.
+    Sonst bleiben inaktive Files schema-incomplete oder zeigen veraltete
+    Stale-Flags, sobald sie spaeter aktiviert werden.
+    """
+    tdir = idir / "translations"
+    if not tdir.exists():
+        return []
+    return sorted(p.stem for p in tdir.glob("*.json") if steam_codes.is_valid(p.stem))
+
+
 def update_master_field(idir: Path, field: str, new_value: str) -> dict:
     """Setzt einen Master-Feld-Wert und re-staled alle Translations.
 
@@ -64,11 +78,8 @@ def update_master_field(idir: Path, field: str, new_value: str) -> dict:
     meta = read_meta(idir)
     affected_stale = 0
     affected_manual = 0
-    for lang in meta.active_languages:
+    for lang in _existing_translation_langs(idir):
         if lang == meta.master_lang:
-            continue
-        tpath = storage.translation_path(idir, lang)
-        if not tpath.exists():
             continue
         t = read_translation(idir, lang)
         if field in t.fields:
@@ -109,6 +120,8 @@ def update_translation_field(
     """
     if not steam_codes.is_valid(lang):
         raise ValueError(f"Unbekannte Sprache: {lang}")
+    if field not in schema.STEAM_FIELDS_STANDARD and field not in schema.STEAM_FIELDS_EA:
+        raise ValueError(f"Unbekanntes Feld: {field}")
     master = read_master(idir)
     master_hash = storage.sha256_text(master.fields.get(field, "")) if master.fields.get(field) else ""
     tpath = storage.translation_path(idir, lang)
@@ -203,11 +216,10 @@ def set_early_access(idir: Path, enabled: bool) -> dict:
         write_master(idir, master)
 
     added_translation_fields = 0
-    for lang in meta.active_languages:
+    # Scope: alle existierenden Translation-Files, nicht nur active_languages.
+    # Sonst bleiben spaeter aktivierte Sprachen schema-incomplete.
+    for lang in _existing_translation_langs(idir):
         if lang == meta.master_lang:
-            continue
-        tpath = storage.translation_path(idir, lang)
-        if not tpath.exists():
             continue
         t = read_translation(idir, lang)
         for ea in schema.STEAM_FIELDS_EA:

@@ -82,10 +82,14 @@ def item_dir(data_root: Path, platform: str, item_id: str, name: str | None = No
     2. Fallback (Lisbeth NT-548 13:02): wenn der Folder kein lesbares
        ``meta.json`` hat (legacy / partially written) und sein Name mit
        ``{item_id}_`` anfaengt, gilt er als Match — aber NUR wenn
-       eindeutig. Bei Praefix-Kollision (Lisbeth NT-548 Pass 6, MEDIUM
-       FUNCTIONAL) wird der Fallback verworfen, sonst koennte ein Lookup
-       auf item_id "1" einen Folder "1_2_xyz" treffen, der eigentlich
-       zu item_id "1_2" gehoert.
+       eindeutig. Bei Praefix-Kollision (Lisbeth NT-548 Pass 6 + Pass 7,
+       MEDIUM FUNCTIONAL) wird der Fallback verworfen, sonst koennte ein
+       Lookup auf item_id "1" einen Folder "1_2_xyz" treffen, der eigentlich
+       zu item_id "1_2" gehoert. Pass 7-Verschaerfung: der Suffix nach
+       ``{item_id}_`` darf KEINEN weiteren Unterstrich enthalten — sonst
+       koennte er auch eine laengere id-Komponente repraesentieren, deren
+       eigener Folder ebenfalls unreadable ist (kein Schutz mehr ueber
+       readable other_meta_ids).
     """
     _validate_path_segment(platform, "platform")
     _validate_path_segment(item_id, "item_id")
@@ -118,24 +122,36 @@ def item_dir(data_root: Path, platform: str, item_id: str, name: str | None = No
                 pass
         unreadable.append(d)
 
-    # Pass 2: Legacy-Fallback nur bei Eindeutigkeit. Drei Filter:
+    # Pass 2: Legacy-Fallback nur bei Eindeutigkeit. Vier Filter:
     #   a) Folder-Name muss mit "{item_id}_" anfangen.
-    #   b) Folder darf nicht zu einem laengeren bekannten item_id passen
-    #      ("1_2_xyz" gehoert zu "1_2", nicht zu "1").
-    #   c) Es darf nur EINEN Kandidaten geben — bei mehreren ist die
+    #   b) Folder darf nicht zu einem bekannten laengeren item_id passen
+    #      ("1_2_xyz" gehoert zu "1_2" wenn dessen meta.json lesbar ist).
+    #   c) Pass 7: Suffix nach "{item_id}_" darf KEINEN weiteren "_"
+    #      enthalten. Sonst koennte der erste Teil des Suffix selbst eine
+    #      laengere id-Komponente sein, deren Folder ebenfalls kein
+    #      lesbares meta hat (= Schutz b greift nicht). Beispiel: Lookup
+    #      auf "1", Folder "1_2_main" ohne meta.json, kein anderer 1_2-
+    #      Folder mit meta — Pass 6 wuerde "1_2_main" akzeptieren, Pass 7
+    #      verwirft es weil suffix="2_main" einen "_" enthaelt.
+    #   d) Es darf nur EINEN Kandidaten geben — bei mehreren ist die
     #      Zuordnung ohne meta.json nicht entscheidbar.
     marker = f"{item_id}_"
     candidates: list[Path] = []
     for d in unreadable:
         if not d.name.startswith(marker):
             continue
-        ambiguous = any(
+        ambiguous_readable = any(
             other_id != item_id
             and len(other_id) > len(item_id)
             and d.name.startswith(f"{other_id}_")
             for other_id in other_meta_ids
         )
-        if ambiguous:
+        if ambiguous_readable:
+            continue
+        suffix = d.name[len(marker):]
+        if "_" in suffix:
+            # Pass 7: Suffix mit Unterstrich = potenziell laengere id-
+            # Komponente ohne lesbare meta.json — Zuordnung mehrdeutig.
             continue
         candidates.append(d)
     if len(candidates) == 1:

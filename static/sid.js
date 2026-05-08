@@ -183,7 +183,8 @@ function renderInhalt(it, targetLangs) {
   const targetHeader = targetLangs.length === 0
     ? `<span class="muted">Keine Zielsprache aktiv. <button class="link" id="btn-langs-inline">Sprachen aktivieren</button></span>`
     : `<label>Zielsprache: <select id="select-target-lang">${targetOptions}</select></label>
-       <button class="btn small" id="btn-translate" title="Auto-uebersetze diese Sprache via Claude CLI">⚡ Auto-uebersetzen</button>`;
+       <button class="btn small" id="btn-translate" title="Auto-uebersetze diese Sprache via Claude CLI">⚡ Auto-uebersetzen</button>
+       <button class="btn small" id="btn-export" title="Steam-Loka-JSON exportieren">📤 Steam-Export</button>`;
 
   const eaToggle = `
     <label class="checkbox-line">
@@ -270,6 +271,9 @@ function bindInhaltHandlers(it) {
 
   const langsInline = document.getElementById("btn-langs-inline");
   if (langsInline) langsInline.addEventListener("click", () => openLanguagesModal());
+
+  const exBtn = document.getElementById("btn-export");
+  if (exBtn) exBtn.addEventListener("click", () => openExportModal(it));
 
   const trBtn = document.getElementById("btn-translate");
   if (trBtn) trBtn.addEventListener("click", async () => {
@@ -498,6 +502,120 @@ function openNewItemModal() {
     state.currentTargetLang = null;
     renderItemTabs();
     await renderContent();
+  });
+}
+
+// --- Modal: Steam-Export -----------------------------------------------------
+
+async function openExportModal(it) {
+  const platform = it.meta.platform;
+  const itemId = it.meta.item_id;
+  showModal(`
+    <h2>Steam-Loka-JSON Export</h2>
+    <p class="muted">Format identisch zum Partner-Backend-Download. Hochladen unter
+    Lokalisierung -> Lokalisierten Text hochladen.</p>
+    <div id="export-stats" class="muted">Lade Vorschau...</div>
+    <div class="export-actions">
+      <button class="btn primary" id="btn-export-download">⬇ Datei erzeugen + herunterladen</button>
+      <button class="btn" id="btn-export-show">JSON anzeigen</button>
+      <button class="btn" id="btn-export-close">Schliessen</button>
+    </div>
+    <div id="export-history" class="muted"></div>
+    <pre id="export-preview" class="export-preview" style="display:none"></pre>
+  `);
+
+  document.getElementById("btn-export-close").addEventListener("click", closeModal);
+
+  // Preview-Stats laden
+  let previewData = null;
+  try {
+    const r = await fetch(`/api/items/${platform}/${itemId}/export-preview`).then(r => r.json());
+    previewData = r.data;
+    const s = r.summary;
+    document.getElementById("export-stats").innerHTML = `
+      <table class="stats-table">
+        <tr><td>Item-ID</td><td><code>${s.item_id}</code></td></tr>
+        <tr><td>Sprachen</td><td>${s.n_languages} (${s.n_languages_with_content} mit Inhalt)</td></tr>
+        <tr><td>Felder pro Sprache</td><td>${s.n_fields_per_language}</td></tr>
+        <tr><td>Gesamt-Zeichen</td><td>${s.total_chars.toLocaleString("de-DE")}</td></tr>
+      </table>`;
+  } catch (err) {
+    document.getElementById("export-stats").innerHTML = `<span class="error">Fehler: ${escapeHtml(String(err))}</span>`;
+  }
+
+  // Bisherige Exports
+  try {
+    const list = await fetch(`/api/items/${platform}/${itemId}/exports`).then(r => r.json());
+    const exports = list.exports || [];
+    const hist = document.getElementById("export-history");
+    if (exports.length === 0) {
+      hist.innerHTML = `<p class="muted">Noch keine Exports archiviert.</p>`;
+    } else {
+      const rows = exports.slice(0, 5).map(e => `
+        <tr>
+          <td><a href="/api/items/${platform}/${itemId}/exports/${e.filename}" download>${escapeHtml(e.filename)}</a></td>
+          <td class="muted">${e.modified_iso}</td>
+          <td class="muted">${(e.size_bytes / 1024).toFixed(1)} KB</td>
+        </tr>`).join("");
+      hist.innerHTML = `
+        <h3 class="export-section-title">Bisherige Exports</h3>
+        <table class="exports-table"><tbody>${rows}</tbody></table>`;
+    }
+  } catch (err) {
+    document.getElementById("export-history").innerHTML = `<span class="error">Verlauf konnte nicht geladen werden.</span>`;
+  }
+
+  document.getElementById("btn-export-show").addEventListener("click", () => {
+    const pre = document.getElementById("export-preview");
+    if (pre.style.display === "none") {
+      pre.textContent = JSON.stringify(previewData, null, 2);
+      pre.style.display = "block";
+    } else {
+      pre.style.display = "none";
+    }
+  });
+
+  document.getElementById("btn-export-download").addEventListener("click", async () => {
+    const btn = document.getElementById("btn-export-download");
+    const orig = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span> erzeuge ...';
+    try {
+      const r = await fetch(`/api/items/${platform}/${itemId}/export`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      if (!r.ok) {
+        showToast("Export fehlgeschlagen: " + (await r.text()), "error");
+        return;
+      }
+      const data = await r.json();
+      // Download triggern via Browser-Link
+      const a = document.createElement("a");
+      a.href = data.download_url;
+      a.download = data.filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      showToast(`Export erzeugt: ${data.filename}`, "ok");
+      // Liste neu laden
+      const list = await fetch(`/api/items/${platform}/${itemId}/exports`).then(r => r.json());
+      const exports = list.exports || [];
+      const rows = exports.slice(0, 5).map(e => `
+        <tr>
+          <td><a href="/api/items/${platform}/${itemId}/exports/${e.filename}" download>${escapeHtml(e.filename)}</a></td>
+          <td class="muted">${e.modified_iso}</td>
+          <td class="muted">${(e.size_bytes / 1024).toFixed(1)} KB</td>
+        </tr>`).join("");
+      document.getElementById("export-history").innerHTML = `
+        <h3 class="export-section-title">Bisherige Exports</h3>
+        <table class="exports-table"><tbody>${rows}</tbody></table>`;
+    } catch (err) {
+      showToast(`Netzwerk-Fehler: ${err}`, "error");
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = orig;
+    }
   });
 }
 

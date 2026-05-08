@@ -13,6 +13,7 @@ auf devastator:5003. Center-Tile verlinkt direkt auf http://devastator:5003.
 from __future__ import annotations
 
 import datetime as _dt
+import json
 from pathlib import Path
 
 import uvicorn
@@ -22,7 +23,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 
-from core import edit_ops, glossary as glossary_mod, labels, schema, steam_codes, storage, translator
+from core import edit_ops, exporter, glossary as glossary_mod, labels, schema, steam_codes, storage, translator
 
 VERSION = "0.2.0"
 NAME = "Sid / KeyAccountMin"
@@ -103,7 +104,22 @@ def api_list_items() -> dict:
 @app.get("/api/items/{platform}/{item_id}")
 def api_get_item(platform: str, item_id: str) -> dict:
     idir = _resolve_idir(platform, item_id)
-    meta = schema.ItemMeta(**storage.read_json(storage.meta_path(idir)))
+    # Lisbeth NT-548 Pass 7: _resolve_idir kann einen Legacy-Folder ohne
+    # meta.json zurueckgeben. Hier kontrolliert auf 404 ueberfuehren statt
+    # ungebremst read_json zu rufen (das wuerde 500 werden).
+    meta_file = storage.meta_path(idir)
+    if not meta_file.exists():
+        raise HTTPException(
+            status_code=404,
+            detail=f"Item {item_id} unter {platform}: meta.json fehlt (Legacy-Ordner '{idir.name}' ohne Metadaten)",
+        )
+    try:
+        meta = schema.ItemMeta(**storage.read_json(meta_file))
+    except (json.JSONDecodeError, OSError) as e:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Item {item_id} unter {platform}: meta.json unlesbar ({e})",
+        )
     master_lang = meta.master_lang  # z.B. "german" -> Datei heisst master_de.json
     iso_short = steam_codes.get(master_lang).iso.split("-")[0]
     master_file = storage.master_path(idir, iso_short)
@@ -323,6 +339,52 @@ def api_put_glossary(platform: str, item_id: str, body: _GlossaryBody) -> dict:
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     return {"ok": True, "n_entries": len(g["entries"])}
+
+
+@app.get("/api/items/{platform}/{item_id}/export-preview")
+def api_export_preview(platform: str, item_id: str) -> dict:
+    """Liefert das Export-JSON inline ohne die Datei zu schreiben."""
+    idir = _resolve_idir(platform, item_id)
+    data = exporter.export_steam_loka(idir)
+    return {"summary": exporter.export_summary(data), "data": data}
+
+
+@app.post("/api/items/{platform}/{item_id}/export")
+def api_export_to_file(platform: str, item_id: str) -> dict:
+    """Schreibt den Export nach exports/<ts>.json und gibt Pfad + Summary zurueck."""
+    idir = _resolve_idir(platform, item_id)
+    out_path = exporter.export_to_file(idir)
+    data = storage.read_json(out_path)
+    return {
+        "ok": True,
+        "filename": out_path.name,
+        "summary": exporter.export_summary(data),
+        "download_url": f"/api/items/{platform}/{item_id}/exports/{out_path.name}",
+    }
+
+
+@app.get("/api/items/{platform}/{item_id}/exports")
+def api_list_exports(platform: str, item_id: str) -> dict:
+    idir = _resolve_idir(platform, item_id)
+    return {"exports": exporter.list_exports(idir)}
+
+
+@app.get("/api/items/{platform}/{item_id}/exports/{filename}")
+def api_download_export(platform: str, item_id: str, filename: str):
+    """Liefert eine bestehende Export-Datei zum Download."""
+    from fastapi.responses import FileResponse
+    if "/" in filename or "\\" in filename or filename.startswith(".") or not filename.endswith(".json"):
+        raise HTTPException(status_code=400, detail="Ungueltiger Dateiname")
+    idir = _resolve_idir(platform, item_id)
+    p = idir / "exports" / filename
+    if not p.exists():
+        raise HTTPException(status_code=404, detail=f"Datei nicht gefunden: {filename}")
+    # Sicherheitscheck: Pfad muss innerhalb des Item-exports-Ordners liegen
+    try:
+        p.resolve().relative_to((idir / "exports").resolve())
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Pfad ausserhalb erlaubtem Bereich")
+    return FileResponse(p, media_type="application/json", filename=filename)
 
 
 @app.post("/api/items")

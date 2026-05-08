@@ -410,3 +410,45 @@ dialog#modal::backdrop {
   padding: 0.1rem 0.5rem;
 }
 .glossary-table .del:hover { background: rgba(193, 74, 74, 0.2); }
+
+.export-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin: 1rem 0 0.5rem;
+  flex-wrap: wrap;
+}
+
+.export-preview {
+  background: #1d1d1d;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0.6rem 0.8rem;
+  max-height: 40vh;
+  overflow: auto;
+  font-size: 0.78em;
+  color: var(--fg);
+  margin-top: 0.8rem;
+}
+
+.export-section-title {
+  margin: 1.2rem 0 0.4rem;
+  font-size: 0.95rem;
+  color: var(--accent);
+}
+
+.stats-table, .exports-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9em;
+  margin: 0.4rem 0;
+}
+.stats-table td, .exports-table td {
+  padding: 0.25rem 0.5rem;
+  border-bottom: 1px solid #2e2e2e;
+}
+.stats-table td:first-child {
+  color: var(--muted);
+  width: 40%;
+}
+.exports-table a { color: var(--accent); text-decoration: none; }
+.exports-table a:hover { text-decoration: underline; }

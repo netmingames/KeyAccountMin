@@ -15,10 +15,12 @@ Diese Modul liefert die bidirektionale Map:
 """
 from __future__ import annotations
 
-# Reihenfolge identisch zur Sid-Feld-Liste in core/schema.py
+# Reihenfolge identisch zum Steam-Sample-Download (siehe data/_samples/),
+# damit ein import + export einen byte-genauen Roundtrip liefert.
+# Sample-Reihenfolge: about, short_description, sysreqs.min.osversion, sysreqs.min.processor.
 STEAM_TO_FIELD: dict[str, str] = {
-    "app[content][short_description]":                    "short_description",
     "app[content][about]":                                "about",
+    "app[content][short_description]":                    "short_description",
     "app[content][sysreqs][windows][min][osversion]":     "sysreqs_min_osversion",
     "app[content][sysreqs][windows][min][processor]":     "sysreqs_min_processor",
     "app[content][sysreqs][windows][min][memory]":        "sysreqs_min_memory",

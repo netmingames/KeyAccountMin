@@ -205,7 +205,8 @@ function renderInhalt(it, targetLangs) {
     ? `<span class="muted">Keine Zielsprache aktiv. <button class="link" id="btn-langs-inline">Sprachen aktivieren</button></span>
        ${exportButton}`
     : `<label>Zielsprache: <select id="select-target-lang">${targetOptions}</select></label>
-       <button class="btn small" id="btn-translate" title="Auto-uebersetze diese Sprache via Claude CLI">⚡ Auto-uebersetzen</button>
+       <button class="btn small" id="btn-translate" title="Auto-uebersetze NUR diese Zielsprache via Claude CLI">⚡ Diese Sprache</button>
+       <button class="btn small" id="btn-translate-all" title="Auto-uebersetze ALLE aktiven Zielsprachen sequenziell">⚡ Alle Sprachen</button>
        ${exportButton}`;
 
   const eaToggle = `
@@ -342,6 +343,9 @@ function bindInhaltHandlers(it) {
       trBtn.innerHTML = orig;
     }
   });
+
+  const trAllBtn = document.getElementById("btn-translate-all");
+  if (trAllBtn) trAllBtn.addEventListener("click", () => openTranslateAllModal(it));
 
   // Master-Editor: on-blur PUT
   for (const ed of document.querySelectorAll(".editor.master")) {
@@ -602,6 +606,82 @@ function openNewItemModal() {
   });
 }
 
+// --- Modal: Bulk-Translate (alle Sprachen) -----------------------------------
+
+async function openTranslateAllModal(it) {
+  const platform = it.meta.platform;
+  const itemId = it.meta.item_id;
+  const targetLangs = it.meta.active_languages.filter(l => l !== it.meta.master_lang);
+
+  const langRows = targetLangs.map(code => {
+    const l = state.langByCode[code];
+    return `<tr data-lang="${code}">
+      <td>${escapeHtml(l?.display || code)} <span class="muted">${escapeHtml(l?.iso || code)}</span></td>
+      <td class="status muted">wartet ...</td>
+    </tr>`;
+  }).join("");
+
+  showModal(`
+    <h2>Alle Sprachen uebersetzen</h2>
+    <p class="muted">${targetLangs.length} aktive Zielsprachen werden sequenziell uebersetzt.
+    Manuell editierte Felder bleiben unangetastet. Pro Sprache ein Claude-CLI-Aufruf
+    (~30s pro Sprache) — das kann ein paar Minuten dauern.</p>
+    <table class="bulk-translate-table"><tbody>${langRows}</tbody></table>
+    <div class="modal-actions">
+      <button class="btn" id="btn-bt-cancel">Schliessen</button>
+      <button class="btn primary" id="btn-bt-start">Start</button>
+    </div>
+    <div id="bt-summary" class="muted"></div>
+  `);
+
+  document.getElementById("btn-bt-cancel").addEventListener("click", closeModal);
+  document.getElementById("btn-bt-start").addEventListener("click", async () => {
+    const startBtn = document.getElementById("btn-bt-start");
+    startBtn.disabled = true;
+    startBtn.innerHTML = '<span class="spinner"></span> uebersetze ...';
+    // Pro Sprache eigener Request — gibt UI Live-Feedback. Backend hat
+    // /translate-all auch, aber dort blockiert der einzelne Roundtrip alles
+    // bis fertig. Sequenzieller Single-Lang ist UX-freundlicher.
+    let okCount = 0;
+    let errCount = 0;
+    for (const lang of targetLangs) {
+      const row = document.querySelector(`tr[data-lang="${lang}"] .status`);
+      if (row) row.innerHTML = '<span class="spinner"></span> ...';
+      try {
+        const r = await fetch(`/api/items/${platform}/${itemId}/translate/${lang}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({}),
+        });
+        if (!r.ok) {
+          const body = await r.json().catch(() => ({}));
+          if (row) row.innerHTML = `<span class="flag stale">FAIL</span> ${escapeHtml(body.detail || `HTTP ${r.status}`)}`;
+          errCount++;
+        } else {
+          const data = await r.json();
+          const n = data.fields_translated.length;
+          const skipped = data.fields_skipped.length;
+          if (row) row.innerHTML = `<span class="flag ok">OK</span> ${n} Felder${skipped ? `, ${skipped} geschuetzt` : ""} (${data.duration_seconds}s)`;
+          okCount++;
+        }
+      } catch (err) {
+        if (row) row.innerHTML = `<span class="flag stale">NETZWERK</span> ${escapeHtml(String(err))}`;
+        errCount++;
+      }
+    }
+    document.getElementById("bt-summary").innerHTML =
+      `<strong>Fertig:</strong> ${okCount} ok, ${errCount} fehlgeschlagen.`;
+    startBtn.innerHTML = "Schliessen";
+    startBtn.disabled = false;
+    startBtn.onclick = () => {
+      closeModal();
+      delete state.itemCache[state.currentItemKey];
+      renderContent();
+    };
+  });
+}
+
+
 // --- Modal: Steam-Export -----------------------------------------------------
 
 async function openExportModal(it) {
@@ -610,7 +690,13 @@ async function openExportModal(it) {
   showModal(`
     <h2>Steam-Loka-JSON Export</h2>
     <p class="muted">Format identisch zum Partner-Backend-Download. Hochladen unter
-    Lokalisierung -> Lokalisierten Text hochladen.</p>
+    Lokalisierung &rarr; Lokalisierten Text hochladen.</p>
+    <div class="export-warning">
+      ⚠ <strong>Early-Access-Felder sind NICHT in dieser JSON enthalten.</strong>
+      Steam pflegt die EA-Q&amp;A in einem separaten Backend-Bereich.
+      Verwende dafuer den 📦-Button im EA-Block (laedt ein ZIP mit allen Sprachen
+      als Plaintext zum Copy/Paste in Steamworks).
+    </div>
     <div id="export-stats" class="muted">Lade Vorschau...</div>
     <div class="export-actions">
       <button class="btn primary" id="btn-export-download">⬇ Datei erzeugen + herunterladen</button>

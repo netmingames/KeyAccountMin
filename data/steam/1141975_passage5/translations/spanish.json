@@ -4,18 +4,18 @@
   "lang": "spanish",
   "fields": {
     "short_description": {
-      "value": "",
-      "source_hash": "",
+      "value": "[SPANISH] Einfach zu lernen, kaum aus der Hand zu legen: Lege Steine, matche Farbe oder Symbol, räume Passagen vom Brett. Der Klassiker unter den Casualspielen ist zurück — runderneuert, mit vier Modi, über 300 Leveln und erstmals zu zweit am Bildschirm: gemeinsam oder im Duell.",
+      "source_hash": "0acb708a665c50ac74cfb31c088c71e5e9b91271b3a79ddef86a6241b9da7b9b",
       "stale": true,
       "manually_edited": false,
-      "last_translated_at": ""
+      "last_translated_at": "2026-05-08T16:15:37"
     },
     "about": {
-      "value": "",
-      "source_hash": "",
+      "value": "[SPANISH] Passage 5 ist der neue Teil einer Spielreihe, die viele unserer Spieler seit über zwanzig Jahren begleitet. Das Prinzip ist seit jeher dasselbe — und genau das ist der Punkt: Lege deine Spielsteine so aneinander, dass entweder Farbe oder Symbol mit den angrenzenden Steinen übereinstimmen. Vollständige Reihen und Spalten — die Passagen — verschwinden vom Spielbrett.\r\n\r\nKlingt einfach. Ist es auch. Und genau das macht es so gut: ein Puzzle, das in dreißig Sekunden verstanden ist und einen nach drei Stunden noch nicht losgelassen hat. Wer vorausschauend plant, räumt mehrere Passagen auf einmal — wer drauflos legt, muss kreativ werden.\r\n\r\nMit dem fünften Teil haben wir das Spiel komplett neu aufgesetzt: ruhiger, übersichtlicher, ohne Schnickschnack. Bedienbar mit Maus, Tastatur oder Gamepad.\r\n\r\n\r\nVier Spielmodi\r\n\r\n- Clear — Markierte Felder freispielen. Über 300 handgebaute Level.\r\n- Continue — Endlos legen, solange das Brett es zulässt.\r\n- Classic — Klassisches Highscore-Jagen.\r\n- Construct (neu) — Das Gegenstück zu Clear: Statt Felder freizuräumen, musst du bestimmte Felder gezielt mit Steinen füllen. Fühlt sich nochmal anders an als die drei Klassiker.\r\n\r\n\r\nErstmals zu zweit\r\n\r\n- Coop — Zwei Spieler an einem Bildschirm, zwei eigene Cursor, gemeinsamer Score. Zusammen aufs Brett schauen, zusammen planen, zusammen gewinnen.\r\n- Duell — Geteiltes Brett, jeder bekommt seine Hälfte. Wer räumt zuerst? Wahlweise über mehrere Level, im Best-of oder als Last Man Playing.\r\n- Geräte werden im FIFA-Stil zugewiesen: Wer auf seinem Eingabegerät bestätigt, ist drin. Tastatur, Maus, mehrere Gamepads — alles parallel möglich.\r\n\r\n\r\nMehr Tiefe für die alten Hasen\r\n\r\n- Vier Schwierigkeitsstufen — neu dabei: Meister, für alle, denen Schwer zu leicht geworden ist\r\n- Optionaler Zug-Timer auf den höheren Stufen — wer keinen Druck will, lässt ihn aus\r\n- Streak-System: Wie viele Steine schaffst du in Folge ohne Fehler?\r\n- Spezial-Steine: Bombe, Reihen- und Spalten-Bombe, Joker und Blocker\r\n- Symbol-Zahlen auf jedem Stein als optische Hilfe — keine Lupe nötig\r\n\r\n\r\nHighscores, Saves und Aktionen\r\n\r\n- Steam-Achievements und Steam-Leaderboards — neu in der Reihe\r\n- Internet-Bestenlisten zusätzlich zu den lokalen Highscores\r\n- Aktionen — zeitlich begrenzte Challenges mit eigener Bestenliste\r\n- Mehrere Speicherplätze mit eigenen Spielernamen, jederzeit wechselbar\r\n- Eigene Highscore-Tabs pro Modus und Schwierigkeit\r\n\r\n\r\nFeatures auf einen Blick\r\n\r\n- Vier Spielmodi: Clear, Continue, Classic, Construct\r\n- Coop und Duell für zwei Spieler\r\n- Vier Schwierigkeitsstufen inkl. Meister\r\n- Über 300 Level im Clear-Modus\r\n- Steam-Achievements und Leaderboards\r\n- Mehrere Save-Slots mit eigenen Spielernamen\r\n- Spezial-Steine, Streak-System, optionaler Zug-Timer\r\n- Komplette Bedienung per Maus, Tastatur oder Gamepad\r\n- Gesprochenes Tutorial — kein langes Lesen nötig\r\n- Atmosphärische Sound-Effekte und Hintergrundmusik\r\n- Eigene Stein-Designs ladbar",
+      "source_hash": "8928c0f2c44333f84fc549301940d98fd8924e944cf7b14690b0a5d1ad762b32",
       "stale": true,
       "manually_edited": false,
-      "last_translated_at": ""
+      "last_translated_at": "2026-05-08T16:15:37"
     },
     "sysreqs_min_osversion": {
       "value": "",
@@ -88,18 +88,18 @@
       "last_translated_at": ""
     },
     "ea_why": {
-      "value": "",
-      "source_hash": "",
+      "value": "[SPANISH] Wir wollen frueh Feedback der Community zu Multiplayer und Schwierigkeit Master.",
+      "source_hash": "922652be7a2a3789d216d94d9553d6dce85965f7acb615fd71d1308724ff3227",
       "stale": true,
       "manually_edited": false,
-      "last_translated_at": ""
+      "last_translated_at": "2026-05-08T16:15:37"
     },
     "ea_duration": {
-      "value": "",
-      "source_hash": "",
+      "value": "[SPANISH] Etwa 6-9 Monate, bis alle 4 Schwierigkeiten und Multiplayer ausbalanciert sind.",
+      "source_hash": "d25c2ef2e10cfb889b99e52581af17bde7d8719e3d2420a1b650eef2f37d47e8",
       "stale": true,
       "manually_edited": false,
-      "last_translated_at": ""
+      "last_translated_at": "2026-05-08T16:15:37"
     },
     "ea_difference": {
       "value": "",
@@ -130,5 +130,5 @@
       "last_translated_at": ""
     }
   },
-  "updated_at": "2026-05-08T16:09:13"
+  "updated_at": "2026-05-08T16:15:47"
 }

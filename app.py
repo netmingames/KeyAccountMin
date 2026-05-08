@@ -410,6 +410,60 @@ def api_translate_lang(platform: str, item_id: str, lang: str, body: _TranslateB
     }
 
 
+@app.post("/api/items/{platform}/{item_id}/translate-all")
+def api_translate_all(platform: str, item_id: str, body: _TranslateBody) -> dict:
+    """Uebersetzt alle aktiven Zielsprachen (Master ausgenommen) sequenziell.
+
+    Manuell editierte Felder bleiben geschuetzt (via_translation_engine=True
+    in core/edit_ops.update_translation_field). Pro Sprache wird ok/error
+    geliefert — eine fehlschlagende Sprache stoppt nicht die anderen, der
+    Caller sieht in der Liste was geklappt hat.
+    """
+    idir = _resolve_idir_with_meta(platform, item_id)
+    meta = edit_ops.read_meta(idir)
+    target_langs = [l for l in meta.active_languages if l != meta.master_lang]
+
+    _VALID_ENGINES = {None, "mock", "claude", "claude-cli"}
+    if body.engine not in _VALID_ENGINES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unbekannte engine '{body.engine}'. Erlaubt: mock | claude | claude-cli | (leer = Default).",
+        )
+    tx = None
+    if body.engine == "mock":
+        tx = translator.MockTranslator()
+    elif body.engine in ("claude", "claude-cli"):
+        tx = translator.ClaudeCliTranslator()
+
+    results: list[dict] = []
+    for lang in target_langs:
+        entry: dict = {"lang": lang}
+        try:
+            r = translator.translate_item_lang(
+                idir, lang, fields=body.fields, translator=tx,
+            )
+            entry.update({
+                "ok": True,
+                "engine": r.engine,
+                "duration_seconds": round(r.duration_seconds, 2),
+                "fields_translated": list(r.fields_translated.keys()),
+                "fields_skipped": r.fields_skipped,
+            })
+        except translator.TranslationError as e:
+            entry.update({"ok": False, "error": str(e)})
+        except ValueError as e:
+            entry.update({"ok": False, "error": str(e)})
+        results.append(entry)
+
+    n_ok = sum(1 for e in results if e.get("ok"))
+    return {
+        "n_total": len(target_langs),
+        "n_ok": n_ok,
+        "n_failed": len(target_langs) - n_ok,
+        "results": results,
+    }
+
+
 @app.get("/api/items/{platform}/{item_id}/glossary")
 def api_get_glossary(platform: str, item_id: str) -> dict:
     idir = _resolve_idir_with_meta(platform, item_id)

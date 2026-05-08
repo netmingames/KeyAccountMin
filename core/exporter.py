@@ -4,6 +4,15 @@ Erzeugt eine JSON-Datei im exakten Format des Steam-Partner-Backend-Downloads
 (`storepage_<appid>_all.json`), die hochgeladen werden kann ueber den
 Lokalisierungs-Tab.
 
+Fehler-Semantik (NT-550 Pass 2 / Lisbeth 15:14 MEDIUM FUNCTIONAL):
+- meta.json: wird VOR dem Aufruf in app.py via _resolve_idir_with_meta
+  validiert -> 422 wenn schema-invalid. Hier nehmen wir an dass meta valide ist.
+- master_*.json: Schema-Fehler propagiert (ValidationError) — das ist ein
+  echter Bug, der dem User als 422 sichtbar werden soll (app.py catched).
+- translations/<lang>.json: einzelne kaputte Sprache wird uebersprungen,
+  in den Output kommt fuer diese Sprache nur ein leerer Block. Das verhindert
+  dass eine korrupte Translation-Datei den ganzen Export killt.
+
 Aufbau Steam-JSON:
 {
   "itemid": "1141975",
@@ -33,6 +42,8 @@ import datetime as _dt
 import json
 from pathlib import Path
 
+from pydantic import ValidationError
+
 from . import edit_ops, schema, steam_codes, steam_mapping, storage
 
 
@@ -54,15 +65,23 @@ def export_steam_loka(idir: Path) -> dict:
         if master.fields.get(f):
             fields_to_export.add(f)
 
-    # Translation-Files cachen, damit wir sie nicht zweimal lesen
+    # Translation-Files cachen, damit wir sie nicht zweimal lesen.
+    # Lisbeth NT-550 15:14 (MEDIUM FUNCTIONAL): einzelne kaputte
+    # Translation-Datei darf nicht den ganzen Export killen — schluckend
+    # skippen statt 500. Liste der geskippten Sprachen wird angehaengt.
     translation_cache: dict[str, schema.TranslationDocument] = {}
+    skipped_translations: list[str] = []
     for lang_code in steam_codes.CODES:
         if lang_code == meta.master_lang:
             continue
         tpath = storage.translation_path(idir, lang_code)
         if not tpath.exists():
             continue
-        t = schema.TranslationDocument(**storage.read_json(tpath))
+        try:
+            t = schema.TranslationDocument(**storage.read_json(tpath))
+        except (ValidationError, json.JSONDecodeError, OSError):
+            skipped_translations.append(lang_code)
+            continue
         translation_cache[lang_code] = t
         for f, tf in t.fields.items():
             if tf.value and f in schema.STEAM_FIELDS_STANDARD:
@@ -90,6 +109,7 @@ def export_steam_loka(idir: Path) -> dict:
     return {
         "itemid": meta.item_id,
         "languages": languages,
+        "skipped_translations": skipped_translations,
     }
 
 
@@ -114,7 +134,10 @@ def export_to_file(idir: Path) -> Path:
         out_path = exports_dir / f"{base_name}_{counter:04d}.json"
         if counter > 9999:
             raise RuntimeError(f"Export-Filename-Kollision unueberbrueckbar: {base_name}")
-    storage.write_json_atomic(out_path, data)
+    # Steam-kompatibles JSON: nur itemid + languages. Diagnose-Felder
+    # (skipped_translations) bleiben in der API-Response, nicht in der Datei.
+    file_data = {"itemid": data["itemid"], "languages": data["languages"]}
+    storage.write_json_atomic(out_path, file_data)
     return out_path
 
 
@@ -154,4 +177,5 @@ def export_summary(data: dict) -> dict:
         "n_languages_with_content": filled_langs,
         "n_fields_per_language": n_fields_per_lang,
         "total_chars": total_chars,
+        "skipped_translations": list(data.get("skipped_translations") or []),
     }

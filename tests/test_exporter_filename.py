@@ -83,3 +83,49 @@ def test_microsecond_in_filename(tmp_path: Path) -> None:
     # storepage, 555, YYYYMMDD, HHMMSS, microseconds
     assert len(parts) >= 5
     assert parts[-1].isdigit() and len(parts[-1]) == 6  # microseconds = 6 digits
+
+
+def test_corrupt_translation_skipped_not_500(tmp_path: Path) -> None:
+    """NT-550 Pass 2 (Lisbeth 15:14 MEDIUM FUNCTIONAL): eine kaputte
+    translations/<lang>.json darf nicht den ganzen Export killen.
+    Stattdessen wird die Sprache uebersprungen + in skipped_translations
+    gemeldet, andere Sprachen funktionieren normal."""
+    from core import exporter
+
+    idir = tmp_path / "steam" / "555_test"
+    _seed_minimal_item(idir)
+
+    # Eine valide englische Translation
+    (idir / "translations").mkdir(parents=True, exist_ok=True)
+    (idir / "translations" / "english.json").write_text(
+        json.dumps({
+            "schema_version": 1,
+            "item_id": "555",
+            "lang": "english",
+            "fields": {"about": {"value": "EN about", "stale": False, "manually_edited": False}},
+            "updated_at": "2026-05-08T16:00:00",
+        }),
+        encoding="utf-8",
+    )
+    # Eine zerschossene franzoesische Translation
+    (idir / "translations" / "french.json").write_text("{ this is not json", encoding="utf-8")
+
+    data = exporter.export_steam_loka(idir)
+    assert "french" in data["skipped_translations"]
+    assert "english" not in data["skipped_translations"]
+    # English-Block ist befuellt, French-Block wird leer ausgegeben (kein 500)
+    assert any(v for v in data["languages"]["english"].values())
+
+
+def test_export_to_file_strips_diagnose_fields(tmp_path: Path) -> None:
+    """NT-550 Pass 2: skipped_translations ist ein Diagnose-Feld in der
+    API-Response, darf aber nicht ins Steam-Upload-JSON. Steam erwartet
+    nur itemid + languages."""
+    from core import exporter
+
+    idir = tmp_path / "steam" / "555_test"
+    _seed_minimal_item(idir)
+
+    p = exporter.export_to_file(idir)
+    file_data = json.loads(p.read_text(encoding="utf-8"))
+    assert set(file_data.keys()) == {"itemid", "languages"}

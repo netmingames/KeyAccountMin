@@ -197,11 +197,16 @@ function renderInhalt(it, targetLangs) {
     return `<option value="${code}" ${code === state.currentTargetLang ? "selected" : ""}>${escapeHtml(l?.display || code)}${stale}</option>`;
   }).join("");
 
+  // NT-550 Pass 2 (Lisbeth 15:14 LOW FUNCTIONAL): Export-Button auch ohne
+  // aktive Zielsprachen rendern — Items mit nur Master sollen ein Steam-
+  // JSON exportieren koennen, ohne erst eine Zielsprache aktivieren zu muessen.
+  const exportButton = `<button class="btn small" id="btn-export" title="Steam-Loka-JSON exportieren">📤 Steam-Export</button>`;
   const targetHeader = targetLangs.length === 0
-    ? `<span class="muted">Keine Zielsprache aktiv. <button class="link" id="btn-langs-inline">Sprachen aktivieren</button></span>`
+    ? `<span class="muted">Keine Zielsprache aktiv. <button class="link" id="btn-langs-inline">Sprachen aktivieren</button></span>
+       ${exportButton}`
     : `<label>Zielsprache: <select id="select-target-lang">${targetOptions}</select></label>
        <button class="btn small" id="btn-translate" title="Auto-uebersetze diese Sprache via Claude CLI">⚡ Auto-uebersetzen</button>
-       <button class="btn small" id="btn-export" title="Steam-Loka-JSON exportieren">📤 Steam-Export</button>`;
+       ${exportButton}`;
 
   const eaToggle = `
     <label class="checkbox-line">

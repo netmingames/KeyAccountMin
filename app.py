@@ -102,10 +102,7 @@ def api_list_items() -> dict:
 
 @app.get("/api/items/{platform}/{item_id}")
 def api_get_item(platform: str, item_id: str) -> dict:
-    try:
-        idir = storage.item_dir(DATA_ROOT, platform, item_id)
-    except FileNotFoundError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+    idir = _resolve_idir(platform, item_id)
     meta = schema.ItemMeta(**storage.read_json(storage.meta_path(idir)))
     master_lang = meta.master_lang  # z.B. "german" -> Datei heisst master_de.json
     iso_short = steam_codes.get(master_lang).iso.split("-")[0]
@@ -147,10 +144,7 @@ def api_get_item(platform: str, item_id: str) -> dict:
 def api_get_translation(platform: str, item_id: str, lang: str) -> dict:
     if not steam_codes.is_valid(lang):
         raise HTTPException(status_code=400, detail=f"Unbekannter Steam-Sprachcode: {lang}")
-    try:
-        idir = storage.item_dir(DATA_ROOT, platform, item_id)
-    except FileNotFoundError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+    idir = _resolve_idir(platform, item_id)
     tpath = storage.translation_path(idir, lang)
     if not tpath.exists():
         raise HTTPException(status_code=404, detail=f"Keine Translation fuer {lang}")

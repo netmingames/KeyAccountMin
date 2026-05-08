@@ -109,6 +109,12 @@ def cmd_import(steam_json: Path, name: str | None, force: bool, data_root: Path,
     master_block = languages.get(steam_codes.MASTER_CODE, {})
     new_master_fields = _extract_field_values(master_block)
 
+    # Vollstaendiges Schema-Skelett als Basis: ALLE Felder aus schema.all_fields()
+    # werden angelegt — auch wenn Steam sie nicht liefert (z.B. sysreqs_rec_*,
+    # ea_*). So ist das Master-File schemakomplett, Translations koennen alle
+    # Felder tracken, und Thomas kann fehlende Felder im UI pflegen.
+    schema_skeleton: dict[str, str] = {f: "" for f in schema.all_fields(early_access=True)}
+
     master_file = storage.master_path(idir, "de")
     if master_file.exists() and not is_new:
         existing_master = schema.MasterDocument(**storage.read_json(master_file))
@@ -129,21 +135,23 @@ def cmd_import(steam_json: Path, name: str | None, force: bool, data_root: Path,
             return 3
         if conflicts and force:
             print(f"--force aktiv: {len(conflicts)} Master-Felder werden ueberschrieben")
-        merged_master = dict(existing_master.fields)
+        # Merge-Reihenfolge: Skelett (alle Schema-Felder leer) -> bestehende
+        # Werte -> neue Werte aus JSON. So bleiben fehlende Felder, die das
+        # Schema kennt aber Steam nicht liefert, als leere Strings erhalten,
+        # ohne dass bestehende Master-Eintraege ueberschrieben werden.
+        merged_master = dict(schema_skeleton)
+        merged_master.update(existing_master.fields)
         merged_master.update(new_master_fields)
-        master_doc = schema.MasterDocument(
-            item_id=item_id,
-            lang="de",
-            fields=merged_master,
-            updated_at=storage.now_iso(),
-        )
     else:
-        master_doc = schema.MasterDocument(
-            item_id=item_id,
-            lang="de",
-            fields=new_master_fields,
-            updated_at=storage.now_iso(),
-        )
+        merged_master = dict(schema_skeleton)
+        merged_master.update(new_master_fields)
+
+    master_doc = schema.MasterDocument(
+        item_id=item_id,
+        lang="de",
+        fields=merged_master,
+        updated_at=storage.now_iso(),
+    )
 
     storage.write_json_atomic(master_file, master_doc.model_dump())
     print(f"Master-DE:     {master_file.name} ({len([v for v in master_doc.fields.values() if v])} Felder befuellt)")

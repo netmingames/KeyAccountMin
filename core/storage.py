@@ -75,8 +75,10 @@ def _slugify(text: str) -> str:
     for ch in text.lower():
         if ch.isalnum():
             out.append(ch)
-        elif ch in (" ", "-", "_"):
+        elif ch in ("-", "_"):
             out.append("_")
+        # Whitespace wird verschluckt: "Passage 5" -> "passage5", nicht "passage_5".
+        # Konvention aus CLAUDE.md (data/steam/1141975_passage5/).
     return "".join(out).strip("_") or "item"
 
 

@@ -133,3 +133,57 @@ def test_export_preview_returns_404_on_legacy_folder(app_with_data, tmp_path: Pa
     client = TestClient(app_with_data.app)
     resp = client.get("/api/items/steam/999/export-preview")
     assert resp.status_code == 404
+
+
+def test_get_item_returns_422_on_schema_invalid_meta(app_with_data, tmp_path: Path) -> None:
+    """NT-549 Pass 3: meta.json ist JSON-decodierbar aber Pydantic-invalid -> 422.
+
+    item_id muss als String matchen, damit Pass 1 den Folder zurueckliefert
+    (sonst wird der Folder als unreadable behandelt und Pass 2 scheitert).
+    Andere required Felder fehlen -> ValidationError im Endpoint -> 422.
+    """
+    from fastapi.testclient import TestClient
+
+    idir = tmp_path / "steam" / "555_legacy"
+    idir.mkdir(parents=True)
+    # Pass 1 liest meta, mid="555" matched item_id, gibt Ordner zurueck.
+    # Im Endpoint scheitert dann das Pydantic-Schema, weil master_lang etc.
+    # fehlen -> ValidationError -> 422.
+    (idir / "meta.json").write_text(
+        # item_id fuer Pass 1-Match, aber required `name` fehlt -> ValidationError
+        json.dumps({"item_id": "555", "platform": "steam"}),
+        encoding="utf-8",
+    )
+
+    client = TestClient(app_with_data.app)
+    resp = client.get("/api/items/steam/555")
+    assert resp.status_code == 422
+    assert "Schema" in resp.json()["detail"]
+
+
+def test_translate_rejects_unknown_engine(app_with_data, tmp_path: Path) -> None:
+    """NT-549 Pass 3: unbekannter engine-Wert -> 400 statt silent fallback."""
+    from fastapi.testclient import TestClient
+
+    idir = tmp_path / "steam" / "999_test"
+    idir.mkdir(parents=True)
+    (idir / "meta.json").write_text(
+        json.dumps({
+            "platform": "steam",
+            "item_id": "999",
+            "name": "Test",
+            "active_languages": [],
+            "early_access": False,
+            "schema_version": 1,
+            "master_lang": "german",
+        }),
+        encoding="utf-8",
+    )
+
+    client = TestClient(app_with_data.app)
+    resp = client.post(
+        "/api/items/steam/999/translate/english",
+        json={"engine": "totally-not-a-translator"},
+    )
+    assert resp.status_code == 400
+    assert "engine" in resp.json()["detail"].lower()

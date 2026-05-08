@@ -94,13 +94,26 @@ def export_steam_loka(idir: Path) -> dict:
 
 
 def export_to_file(idir: Path) -> Path:
-    """Schreibt den Export nach exports/<timestamp>.json und gibt den Pfad zurueck."""
+    """Schreibt den Export nach exports/<timestamp>.json und gibt den Pfad zurueck.
+
+    Lisbeth NT-549/NT-550 (MEDIUM FUNCTIONAL): Filename hatte Sekunden-
+    Praezision, zwei Exports in derselben Sekunde haetten die gleiche Datei
+    ueberschrieben. Jetzt mit Microsekunden — und zur Sicherheit nochmal
+    ein Kollisions-Check (sehr unwahrscheinlich, aber unueberschreibbar):
+    falls der Pfad doch existiert, haengen wir einen 4-stelligen Counter an.
+    """
     data = export_steam_loka(idir)
     exports_dir = idir / "exports"
     exports_dir.mkdir(parents=True, exist_ok=True)
-    timestamp = _dt.datetime.now().strftime("%Y%m%d_%H%M%S")
-    filename = f"storepage_{data['itemid']}_{timestamp}.json"
-    out_path = exports_dir / filename
+    timestamp = _dt.datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+    base_name = f"storepage_{data['itemid']}_{timestamp}"
+    out_path = exports_dir / f"{base_name}.json"
+    counter = 0
+    while out_path.exists():
+        counter += 1
+        out_path = exports_dir / f"{base_name}_{counter:04d}.json"
+        if counter > 9999:
+            raise RuntimeError(f"Export-Filename-Kollision unueberbrueckbar: {base_name}")
     storage.write_json_atomic(out_path, data)
     return out_path
 

@@ -21,7 +21,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 from core import edit_ops, exporter, glossary as glossary_mod, labels, schema, steam_codes, storage, translator
 
@@ -104,7 +104,16 @@ def api_list_items() -> dict:
 @app.get("/api/items/{platform}/{item_id}")
 def api_get_item(platform: str, item_id: str) -> dict:
     idir = _resolve_idir_with_meta(platform, item_id)
-    meta = schema.ItemMeta(**storage.read_json(storage.meta_path(idir)))
+    # Lisbeth NT-549 14:44 (MEDIUM FUNCTIONAL): schema-invalide aber JSON-
+    # decodierbare meta.json wuerde sonst als 500 sichtbar. ValidationError
+    # in 422 ueberfuehren ("schema-mismatch / migration noetig").
+    try:
+        meta = schema.ItemMeta(**storage.read_json(storage.meta_path(idir)))
+    except ValidationError as e:
+        raise HTTPException(
+            status_code=422,
+            detail=f"meta.json fuer {item_id} hat ungueltiges Schema: {e.errors()}",
+        )
     master_lang = meta.master_lang  # z.B. "german" -> Datei heisst master_de.json
     iso_short = steam_codes.get(master_lang).iso.split("-")[0]
     master_file = storage.master_path(idir, iso_short)
@@ -113,7 +122,13 @@ def api_get_item(platform: str, item_id: str) -> dict:
             status_code=500,
             detail=f"Master-Datei {master_file.name} fehlt im Item-Ordner",
         )
-    master = schema.MasterDocument(**storage.read_json(master_file))
+    try:
+        master = schema.MasterDocument(**storage.read_json(master_file))
+    except ValidationError as e:
+        raise HTTPException(
+            status_code=422,
+            detail=f"master_*.json fuer {item_id} hat ungueltiges Schema: {e.errors()}",
+        )
 
     translations: dict[str, dict] = {}
     for lang in steam_codes.CODES:
@@ -122,7 +137,12 @@ def api_get_item(platform: str, item_id: str) -> dict:
         tpath = storage.translation_path(idir, lang)
         if not tpath.exists():
             continue
-        t = schema.TranslationDocument(**storage.read_json(tpath))
+        try:
+            t = schema.TranslationDocument(**storage.read_json(tpath))
+        except ValidationError:
+            # Korrupte Translation-Datei -> ueberspringen (kein 500 wegen einer
+            # einzelnen kaputten Sprache). Wird in der Liste einfach fehlen.
+            continue
         n_filled = sum(1 for f in t.fields.values() if f.value)
         n_stale = sum(1 for f in t.fields.values() if f.stale)
         n_manual = sum(1 for f in t.fields.values() if f.manually_edited)
@@ -312,13 +332,23 @@ def api_translate_lang(platform: str, item_id: str, lang: str, body: _TranslateB
         raise HTTPException(status_code=400, detail=f"Unbekannter Steam-Sprachcode: {lang}")
     idir = _resolve_idir_with_meta(platform, item_id)
 
-    # Engine-Auswahl ohne env-var-Mutation: explizite Translator-Instanz
+    # Engine-Auswahl ohne env-var-Mutation: explizite Translator-Instanz.
+    # Lisbeth NT-549 14:44 (LOW FUNCTIONAL): unbekannter engine-Wert wurde
+    # vorher silently auf den env-Default zurueckgefallen. Jetzt explizit
+    # 400 — sonst glaubt der Caller, er habe den Translator gewaehlt, der
+    # tatsaechlich aber gar nicht greift.
+    _VALID_ENGINES = {None, "mock", "claude", "claude-cli"}
+    if body.engine not in _VALID_ENGINES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unbekannte engine '{body.engine}'. Erlaubt: mock | claude | claude-cli | (leer = Default).",
+        )
     tx = None
     if body.engine == "mock":
         tx = translator.MockTranslator()
     elif body.engine in ("claude", "claude-cli"):
         tx = translator.ClaudeCliTranslator()
-    # else: get_translator() innerhalb translate_item_lang nimmt env
+    # else: body.engine is None -> get_translator() innerhalb translate_item_lang nimmt env
 
     try:
         result = translator.translate_item_lang(

@@ -101,45 +101,46 @@ def test_legacy_fallback_skipped_when_meta_lists_other_id(tmp_path: Path) -> Non
         item_dir(tmp_path, "steam", "999")
 
 
-def test_pass7_unreadable_longer_id_blocks_legacy_fallback(tmp_path: Path) -> None:
-    """Pass 7 (Lisbeth NT-548): Lookup auf "1" darf "1_2_main" NICHT matchen,
-    auch wenn weder "1_2_main" noch ein konkurrierender "1_2"-Folder eine
-    lesbare meta.json hat.
+def test_pass8_legacy_with_underscore_slug_matches_when_unique(tmp_path: Path) -> None:
+    """Pass 8 (Lisbeth NT-548 14:39): Legacy-Folder mit Underscore im Slug
+    (z.B. "777_my_game") wird beim Lookup auf "777" akzeptiert, solange es
+    keine Hinweise auf eine kollidierende laengere id gibt.
 
-    Der Pass-6-Filter hat das uebersehen, weil er nur _readable_ andere
-    item_ids ausschloss. Pass 7 verschaerft: Suffix nach "{item_id}_" darf
-    keinen weiteren "_" enthalten — sonst koennte der erste Suffix-Teil
-    selbst eine laengere id-Komponente sein.
+    Pass 7 hatte das pauschal abgelehnt, was Lisbeth zu strikt fand.
     """
-    long_id = tmp_path / "steam" / "1_2_main"
-    long_id.mkdir(parents=True)
-    # kein meta.json -> "1_2" nicht in other_meta_ids
-    with pytest.raises(FileNotFoundError):
-        item_dir(tmp_path, "steam", "1")
+    p = tmp_path / "steam" / "777_my_game"
+    p.mkdir(parents=True)
+    # kein meta.json, einzelner Kandidat
+    assert item_dir(tmp_path, "steam", "777") == p
 
 
-def test_pass7_lookup_on_compound_id_still_finds_unreadable(tmp_path: Path) -> None:
-    """Pass 7-Verschaerfung darf den Suffix-Check nicht zu eng machen:
-    Lookup auf compound id "1_2" mit Folder "1_2_main" (kein meta.json)
-    soll weiterhin matchen — Suffix nach "1_2_" ist "main", kein "_".
-    """
+def test_pass8_lookup_on_compound_id_still_finds_unreadable(tmp_path: Path) -> None:
+    """Lookup auf compound id "1_2" mit Folder "1_2_main" (kein meta.json)
+    matched — Suffix nach "1_2_" ist "main", kein "_"."""
     legacy = tmp_path / "steam" / "1_2_main"
     legacy.mkdir(parents=True)
     assert item_dir(tmp_path, "steam", "1_2") == legacy
 
 
-def test_pass7_legacy_with_underscore_slug_refused_for_safety(tmp_path: Path) -> None:
-    """Konservative Konsequenz von Pass 7: Legacy-Folder mit Underscore im
-    Slug (z.B. "777_my_game") wird beim Lookup auf "777" NICHT mehr akzeptiert.
-
-    Trade-off: User muss meta.json schreiben, um den Folder eindeutig zu
-    identifizieren. Im Tausch gegen Sicherheit gegen Praefix-Kollision.
-    """
-    p = tmp_path / "steam" / "777_my_game"
-    p.mkdir(parents=True)
-    # kein meta.json
+def test_pass8_collision_with_bare_longer_id_folder_refuses(tmp_path: Path) -> None:
+    """Pass 8 Filter (c): wenn neben "1_2_main" auch ein "1_2"-Folder
+    (lesbar oder nicht) existiert, ist "1_2" plausibel eine eigene id und
+    der Lookup auf "1" muss refuse-en."""
+    main = tmp_path / "steam" / "1_2_main"
+    main.mkdir(parents=True)
+    bare = tmp_path / "steam" / "1_2"
+    bare.mkdir(parents=True)
     with pytest.raises(FileNotFoundError):
-        item_dir(tmp_path, "steam", "777")
-    # Mit meta.json funktioniert es weiterhin direkt:
-    _write_meta(p, "777", "My Game")
-    assert item_dir(tmp_path, "steam", "777") == p
+        item_dir(tmp_path, "steam", "1")
+
+
+def test_pass8_collision_with_sibling_longer_prefix_refuses(tmp_path: Path) -> None:
+    """Pass 8 Filter (c): wenn "1_2_main" und "1_2_other" beide unreadable
+    nebeneinander stehen, ist "1_2_" ein shared prefix und damit eine
+    plausible eigene id. Lookup auf "1" muss refuse-en."""
+    main = tmp_path / "steam" / "1_2_main"
+    other = tmp_path / "steam" / "1_2_other"
+    main.mkdir(parents=True)
+    other.mkdir(parents=True)
+    with pytest.raises(FileNotFoundError):
+        item_dir(tmp_path, "steam", "1")

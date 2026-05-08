@@ -93,3 +93,43 @@ def test_proper_item_still_works(app_with_data, tmp_path: Path) -> None:
     # 200 wenn Schema passt; 500 wenn weitere Pflichtfelder fehlen — wir
     # interessieren uns hier nur dafuer, dass es NICHT der 404 von oben ist.
     assert resp.status_code != 404
+
+
+def test_translate_route_returns_404_on_legacy_folder(app_with_data, tmp_path: Path) -> None:
+    """Pass 8: api_translate_lang nutzt _resolve_idir_with_meta -> 404 statt 500."""
+    from fastapi.testclient import TestClient
+
+    legacy = tmp_path / "steam" / "999_legacy"
+    legacy.mkdir(parents=True)
+    # kein meta.json
+
+    client = TestClient(app_with_data.app)
+    resp = client.post(
+        "/api/items/steam/999/translate/english",
+        json={"engine": "mock"},
+    )
+    assert resp.status_code == 404
+
+
+def test_glossary_route_returns_404_on_legacy_folder(app_with_data, tmp_path: Path) -> None:
+    """Pass 8: api_get_glossary nutzt _resolve_idir_with_meta -> 404 statt 500."""
+    from fastapi.testclient import TestClient
+
+    legacy = tmp_path / "steam" / "999_legacy"
+    legacy.mkdir(parents=True)
+
+    client = TestClient(app_with_data.app)
+    resp = client.get("/api/items/steam/999/glossary")
+    assert resp.status_code == 404
+
+
+def test_export_preview_returns_404_on_legacy_folder(app_with_data, tmp_path: Path) -> None:
+    """Pass 8: api_export_preview nutzt _resolve_idir_with_meta -> 404 statt 500."""
+    from fastapi.testclient import TestClient
+
+    legacy = tmp_path / "steam" / "999_legacy"
+    legacy.mkdir(parents=True)
+
+    client = TestClient(app_with_data.app)
+    resp = client.get("/api/items/steam/999/export-preview")
+    assert resp.status_code == 404

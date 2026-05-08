@@ -103,23 +103,8 @@ def api_list_items() -> dict:
 
 @app.get("/api/items/{platform}/{item_id}")
 def api_get_item(platform: str, item_id: str) -> dict:
-    idir = _resolve_idir(platform, item_id)
-    # Lisbeth NT-548 Pass 7: _resolve_idir kann einen Legacy-Folder ohne
-    # meta.json zurueckgeben. Hier kontrolliert auf 404 ueberfuehren statt
-    # ungebremst read_json zu rufen (das wuerde 500 werden).
-    meta_file = storage.meta_path(idir)
-    if not meta_file.exists():
-        raise HTTPException(
-            status_code=404,
-            detail=f"Item {item_id} unter {platform}: meta.json fehlt (Legacy-Ordner '{idir.name}' ohne Metadaten)",
-        )
-    try:
-        meta = schema.ItemMeta(**storage.read_json(meta_file))
-    except (json.JSONDecodeError, OSError) as e:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Item {item_id} unter {platform}: meta.json unlesbar ({e})",
-        )
+    idir = _resolve_idir_with_meta(platform, item_id)
+    meta = schema.ItemMeta(**storage.read_json(storage.meta_path(idir)))
     master_lang = meta.master_lang  # z.B. "german" -> Datei heisst master_de.json
     iso_short = steam_codes.get(master_lang).iso.split("-")[0]
     master_file = storage.master_path(idir, iso_short)
@@ -234,9 +219,38 @@ def _resolve_idir(platform: str, item_id: str) -> Path:
         raise HTTPException(status_code=400, detail=str(e))
 
 
+def _resolve_idir_with_meta(platform: str, item_id: str) -> Path:
+    """Wie _resolve_idir, prueft aber zusaetzlich ob meta.json lesbar ist.
+
+    Lisbeth NT-548 14:39 (MEDIUM FUNCTIONAL): Routen, die Daten aus dem Item-
+    Ordner lesen oder schreiben (translate, glossary, export, master/translation
+    PUTs), brauchen eine valide meta.json. Wenn ``item_dir()`` einen Legacy-
+    Folder ohne meta.json liefert, wuerden die nachgelagerten ``read_meta``/
+    ``glossary.load``/``exporter.export``-Aufrufe alle in FileNotFoundError oder
+    JSONDecodeError laufen — sichtbar als 500 Internal Server Error. Stattdessen
+    hier kontrolliert auf 404 ueberfuehren.
+    """
+    idir = _resolve_idir(platform, item_id)
+    meta_file = storage.meta_path(idir)
+    if not meta_file.exists():
+        raise HTTPException(
+            status_code=404,
+            detail=f"Item {item_id} unter {platform}: meta.json fehlt (Legacy-Ordner '{idir.name}' ohne Metadaten)",
+        )
+    try:
+        # Probe-Lesen: validiert JSON-Decodierbarkeit, ohne Inhalt zu nutzen.
+        storage.read_json(meta_file)
+    except (json.JSONDecodeError, OSError) as e:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Item {item_id} unter {platform}: meta.json unlesbar ({e})",
+        )
+    return idir
+
+
 @app.put("/api/items/{platform}/{item_id}/master/{field}")
 def api_put_master_field(platform: str, item_id: str, field: str, body: _ValueBody) -> dict:
-    idir = _resolve_idir(platform, item_id)
+    idir = _resolve_idir_with_meta(platform, item_id)
     try:
         result = edit_ops.update_master_field(idir, field, body.value)
     except ValueError as e:
@@ -248,7 +262,7 @@ def api_put_master_field(platform: str, item_id: str, field: str, body: _ValueBo
 def api_put_translation_field(platform: str, item_id: str, lang: str, field: str, body: _ValueBody) -> dict:
     if not steam_codes.is_valid(lang):
         raise HTTPException(status_code=400, detail=f"Unbekannter Steam-Sprachcode: {lang}")
-    idir = _resolve_idir(platform, item_id)
+    idir = _resolve_idir_with_meta(platform, item_id)
     try:
         result = edit_ops.update_translation_field(idir, lang, field, body.value)
     except ValueError as e:
@@ -258,7 +272,7 @@ def api_put_translation_field(platform: str, item_id: str, lang: str, field: str
 
 @app.put("/api/items/{platform}/{item_id}/active-languages")
 def api_put_active_languages(platform: str, item_id: str, body: _LanguagesBody) -> dict:
-    idir = _resolve_idir(platform, item_id)
+    idir = _resolve_idir_with_meta(platform, item_id)
     try:
         result = edit_ops.set_active_languages(idir, body.languages)
     except ValueError as e:
@@ -268,7 +282,7 @@ def api_put_active_languages(platform: str, item_id: str, body: _LanguagesBody) 
 
 @app.put("/api/items/{platform}/{item_id}/early-access")
 def api_put_early_access(platform: str, item_id: str, body: _EarlyAccessBody) -> dict:
-    idir = _resolve_idir(platform, item_id)
+    idir = _resolve_idir_with_meta(platform, item_id)
     result = edit_ops.set_early_access(idir, body.enabled)
     return {"ok": True, **result}
 
@@ -296,7 +310,7 @@ class _GlossaryBody(BaseModel):
 def api_translate_lang(platform: str, item_id: str, lang: str, body: _TranslateBody) -> dict:
     if not steam_codes.is_valid(lang):
         raise HTTPException(status_code=400, detail=f"Unbekannter Steam-Sprachcode: {lang}")
-    idir = _resolve_idir(platform, item_id)
+    idir = _resolve_idir_with_meta(platform, item_id)
 
     # Engine-Auswahl ohne env-var-Mutation: explizite Translator-Instanz
     tx = None
@@ -326,13 +340,13 @@ def api_translate_lang(platform: str, item_id: str, lang: str, body: _TranslateB
 
 @app.get("/api/items/{platform}/{item_id}/glossary")
 def api_get_glossary(platform: str, item_id: str) -> dict:
-    idir = _resolve_idir(platform, item_id)
+    idir = _resolve_idir_with_meta(platform, item_id)
     return glossary_mod.load(idir)
 
 
 @app.put("/api/items/{platform}/{item_id}/glossary")
 def api_put_glossary(platform: str, item_id: str, body: _GlossaryBody) -> dict:
-    idir = _resolve_idir(platform, item_id)
+    idir = _resolve_idir_with_meta(platform, item_id)
     g = {"entries": [e.model_dump() for e in body.entries]}
     try:
         glossary_mod.save(idir, g)
@@ -344,7 +358,7 @@ def api_put_glossary(platform: str, item_id: str, body: _GlossaryBody) -> dict:
 @app.get("/api/items/{platform}/{item_id}/export-preview")
 def api_export_preview(platform: str, item_id: str) -> dict:
     """Liefert das Export-JSON inline ohne die Datei zu schreiben."""
-    idir = _resolve_idir(platform, item_id)
+    idir = _resolve_idir_with_meta(platform, item_id)
     data = exporter.export_steam_loka(idir)
     return {"summary": exporter.export_summary(data), "data": data}
 
@@ -352,7 +366,7 @@ def api_export_preview(platform: str, item_id: str) -> dict:
 @app.post("/api/items/{platform}/{item_id}/export")
 def api_export_to_file(platform: str, item_id: str) -> dict:
     """Schreibt den Export nach exports/<ts>.json und gibt Pfad + Summary zurueck."""
-    idir = _resolve_idir(platform, item_id)
+    idir = _resolve_idir_with_meta(platform, item_id)
     out_path = exporter.export_to_file(idir)
     data = storage.read_json(out_path)
     return {

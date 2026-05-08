@@ -79,17 +79,25 @@ def item_dir(data_root: Path, platform: str, item_id: str, name: str | None = No
        den Verzeichnisnamen reicht nicht aus — bei item_ids, die einander
        als Praefix enthalten ("1" vs "1_2"), matched ein Lookup auf "1"
        sonst faelschlich auch "1_2_..."-Ordner.
-    2. Fallback (Lisbeth NT-548 13:02): wenn der Folder kein lesbares
-       ``meta.json`` hat (legacy / partially written) und sein Name mit
-       ``{item_id}_`` anfaengt, gilt er als Match — aber NUR wenn
-       eindeutig. Bei Praefix-Kollision (Lisbeth NT-548 Pass 6 + Pass 7,
-       MEDIUM FUNCTIONAL) wird der Fallback verworfen, sonst koennte ein
-       Lookup auf item_id "1" einen Folder "1_2_xyz" treffen, der eigentlich
-       zu item_id "1_2" gehoert. Pass 7-Verschaerfung: der Suffix nach
-       ``{item_id}_`` darf KEINEN weiteren Unterstrich enthalten — sonst
-       koennte er auch eine laengere id-Komponente repraesentieren, deren
-       eigener Folder ebenfalls unreadable ist (kein Schutz mehr ueber
-       readable other_meta_ids).
+    2. Fallback (Lisbeth NT-548 13:02 / Pass 8): wenn der Folder kein
+       lesbares ``meta.json`` hat (legacy / partially written) und sein
+       Name mit ``{item_id}_`` anfaengt, gilt er als Match — aber NUR wenn
+       eindeutig. Drei Filter:
+         a) Folder-Name muss mit "{item_id}_" anfangen.
+         b) Folder darf nicht zu einem laengeren bekannten item_id passen
+            ("1_2_xyz" gehoert zu "1_2" wenn dessen meta.json lesbar ist).
+         c) Folder darf nicht zu einer laengeren id passen, fuer die ein
+            anderer Folder im base existiert (lesbar oder nicht). Pass 8:
+            wenn neben "1_2_main" (unreadable) auch "1_2_other" oder ein
+            "1_2"-Folder steht, ist "1_2" plausibel eine eigene id.
+         d) Es darf nur EINEN Kandidaten geben.
+
+       Pass 7-Verschaerfung (kompletter suffix-underscore-Block) wurde von
+       Lisbeth NT-548 14:39 zurueckgewiesen, weil dabei valide Folder wie
+       "777_my_game" (slug mit Underscore, kein Konflikt) abgelehnt wurden.
+       Pass 8 ersetzt das durch die strukturelle Pruefung in (c): nur dann
+       refuse, wenn es konkrete Hinweise auf eine collidierende laengere id
+       im Verzeichnis gibt.
     """
     _validate_path_segment(platform, "platform")
     _validate_path_segment(item_id, "item_id")
@@ -122,24 +130,19 @@ def item_dir(data_root: Path, platform: str, item_id: str, name: str | None = No
                 pass
         unreadable.append(d)
 
-    # Pass 2: Legacy-Fallback nur bei Eindeutigkeit. Vier Filter:
-    #   a) Folder-Name muss mit "{item_id}_" anfangen.
-    #   b) Folder darf nicht zu einem bekannten laengeren item_id passen
-    #      ("1_2_xyz" gehoert zu "1_2" wenn dessen meta.json lesbar ist).
-    #   c) Pass 7: Suffix nach "{item_id}_" darf KEINEN weiteren "_"
-    #      enthalten. Sonst koennte der erste Teil des Suffix selbst eine
-    #      laengere id-Komponente sein, deren Folder ebenfalls kein
-    #      lesbares meta hat (= Schutz b greift nicht). Beispiel: Lookup
-    #      auf "1", Folder "1_2_main" ohne meta.json, kein anderer 1_2-
-    #      Folder mit meta — Pass 6 wuerde "1_2_main" akzeptieren, Pass 7
-    #      verwirft es weil suffix="2_main" einen "_" enthaelt.
-    #   d) Es darf nur EINEN Kandidaten geben — bei mehreren ist die
-    #      Zuordnung ohne meta.json nicht entscheidbar.
+    # Pass 2: Legacy-Fallback nur bei Eindeutigkeit. Filter siehe Docstring.
+    # Pass 8 (Lisbeth NT-548 14:39 + Pass 7-Reverter): Filter (c) ist jetzt
+    # struktur-basiert — wir refuse-en nur dann, wenn es im Verzeichnis
+    # konkrete Hinweise auf eine collidierende laengere id gibt
+    # (z.B. neben "1_2_main" auch "1_2_other" oder ein bare "1_2"-Folder).
+    # "777_my_game" allein bleibt damit ein valider Match.
     marker = f"{item_id}_"
+    base_dirs = [d for d in base.iterdir() if d.is_dir()]
     candidates: list[Path] = []
     for d in unreadable:
         if not d.name.startswith(marker):
             continue
+        # Filter (b): kollidiert mit lesbarer laengerer id?
         ambiguous_readable = any(
             other_id != item_id
             and len(other_id) > len(item_id)
@@ -148,11 +151,35 @@ def item_dir(data_root: Path, platform: str, item_id: str, name: str | None = No
         )
         if ambiguous_readable:
             continue
+        # Filter (c1): koennte d selbst eine laengere item_id sein? Indikator:
+        # ein anderer Folder im base hat d.name als Praefix mit "_" — z.B.
+        # d=`1_2`, sibling=`1_2_main`. Dann ist `1_2` plausibel die echte id
+        # und der Lookup auf "1" sollte refuse-en.
+        d_prefix = f"{d.name}_"
+        has_descendant = any(
+            d2.name != d.name and d2.name.startswith(d_prefix)
+            for d2 in base_dirs
+        )
+        if has_descendant:
+            continue
+        # Filter (c2): koennte d "Subfolder" einer plausiblen laengeren id
+        # sein? Wenn der Suffix nach "{item_id}_" einen weiteren "_" hat,
+        # ist die erste Suffix-Komponente eine potentielle id-Erweiterung.
+        # Wir checken, ob es ANDERE Folder im base gibt, die zu dieser
+        # laengeren id zeigen — als bare directory ("1_2") oder als
+        # zweites prefix-shared directory ("1_2_other").
         suffix = d.name[len(marker):]
         if "_" in suffix:
-            # Pass 7: Suffix mit Unterstrich = potenziell laengere id-
-            # Komponente ohne lesbare meta.json — Zuordnung mehrdeutig.
-            continue
+            x_component = suffix.split("_", 1)[0]
+            longer_id = f"{item_id}_{x_component}"
+            longer_marker = f"{longer_id}_"
+            collision = any(
+                d2.name != d.name
+                and (d2.name == longer_id or d2.name.startswith(longer_marker))
+                for d2 in base_dirs
+            )
+            if collision:
+                continue
         candidates.append(d)
     if len(candidates) == 1:
         return candidates[0]

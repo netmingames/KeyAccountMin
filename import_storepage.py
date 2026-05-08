@@ -116,12 +116,15 @@ def cmd_import(steam_json: Path, name: str | None, force: bool, data_root: Path,
     schema_skeleton: dict[str, str] = {f: "" for f in schema.all_fields(early_access=True)}
 
     master_file = storage.master_path(idir, "de")
+    # Nur non-empty Werte aus dem Steam-JSON werden in den Merge uebernommen.
+    # Steam liefert fuer fehlende/leere Felder einen leeren String — wuerden
+    # die mit-uebernommen, koennten sie kuratierte Master-Texte beim Re-Import
+    # ueberschreiben (Lisbeth NT-548 12:37, MEDIUM FUNCTIONAL).
+    new_master_nonempty = {f: v for f, v in new_master_fields.items() if v}
     if master_file.exists() and not is_new:
         existing_master = schema.MasterDocument(**storage.read_json(master_file))
         conflicts = []
-        for field, new_val in new_master_fields.items():
-            if not new_val:
-                continue
+        for field, new_val in new_master_nonempty.items():
             old_val = existing_master.fields.get(field, "")
             if old_val and old_val != new_val:
                 conflicts.append((field, old_val, new_val))
@@ -136,15 +139,15 @@ def cmd_import(steam_json: Path, name: str | None, force: bool, data_root: Path,
         if conflicts and force:
             print(f"--force aktiv: {len(conflicts)} Master-Felder werden ueberschrieben")
         # Merge-Reihenfolge: Skelett (alle Schema-Felder leer) -> bestehende
-        # Werte -> neue Werte aus JSON. So bleiben fehlende Felder, die das
-        # Schema kennt aber Steam nicht liefert, als leere Strings erhalten,
-        # ohne dass bestehende Master-Eintraege ueberschrieben werden.
+        # Werte -> neue NICHT-LEERE Werte aus JSON. So bleiben fehlende Felder,
+        # die das Schema kennt aber Steam nicht liefert, als leere Strings
+        # erhalten, ohne dass bestehende Master-Eintraege ueberschrieben werden.
         merged_master = dict(schema_skeleton)
         merged_master.update(existing_master.fields)
-        merged_master.update(new_master_fields)
+        merged_master.update(new_master_nonempty)
     else:
         merged_master = dict(schema_skeleton)
-        merged_master.update(new_master_fields)
+        merged_master.update(new_master_nonempty)
 
     master_doc = schema.MasterDocument(
         item_id=item_id,
@@ -223,9 +226,14 @@ def cmd_import(steam_json: Path, name: str | None, force: bool, data_root: Path,
           f"(manuelle Edits geschuetzt: {skipped_protected_total})")
 
     # --- Meta -----------------------------------------------------------------
-    # active_languages werden bei jedem Import (auch Re-Import) aus dem
-    # aktuellen storepage_*.json neu berechnet. Sonst zeigt die UI veraltete
-    # Sprachenlisten, wenn ein spaeterer Import andere Sprachen liefert.
+    # active_languages = persistente UI-Auswahl des Users (welche Sprachen er
+    # in Sid pflegen will). Beim Re-Import bleibt die existierende Liste
+    # unangetastet — sonst wuerden manuell aktivierte Sprachen verschwinden,
+    # wenn die naechste Steam-JSON-Lieferung sie nicht enthaelt
+    # (Lisbeth NT-548 12:37, MEDIUM FUNCTIONAL — bewusste Revert-Bewegung
+    # gegenueber NT-547 LOW-Finding).
+    # Beim Erst-Import dient die Steam-JSON als Default-Auswahl: alle Sprachen,
+    # die ueberhaupt befuellt sind, werden vorausgewaehlt.
     active_from_steam = [
         lang for lang in steam_codes.CODES
         if any(_extract_field_values(languages.get(lang, {})).values())
@@ -233,7 +241,6 @@ def cmd_import(steam_json: Path, name: str | None, force: bool, data_root: Path,
     meta_file = storage.meta_path(idir)
     if meta_file.exists():
         meta = schema.ItemMeta(**storage.read_json(meta_file))
-        meta.active_languages = active_from_steam
         meta.updated_at = storage.now_iso()
     else:
         meta = schema.ItemMeta(

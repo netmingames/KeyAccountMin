@@ -310,10 +310,12 @@ function bindInhaltHandlers(it) {
         // stale-Class entfernen
         e.target.parentElement.classList.remove("stale");
         flashOk(e.target);
-        // Cache invalidieren, damit die Translation-Summary (filled/stale/
-        // manually_edited Counts) im Sprachselektor und in den Header-Zahlen
-        // beim naechsten Render aktuell ist.
+        // Cache invalidieren UND neu rendern. Ohne Re-Render bleibt
+        // it.translations[code].stale/manually_edited/filled im Sprachselektor
+        // veraltet, bis manuell die Sprache gewechselt wird (Lisbeth NT-548
+        // 12:37, LOW FUNCTIONAL).
         delete state.itemCache[state.currentItemKey];
+        await renderContent();
       } catch (err) {
         alert("Translation speichern fehlgeschlagen: " + err);
       }

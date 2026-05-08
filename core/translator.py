@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import json
 import os
-import re
+import shutil
 import subprocess
 import time
 from dataclasses import dataclass
@@ -26,8 +26,33 @@ from typing import Iterable, Protocol
 
 from . import edit_ops, glossary as glossary_mod, schema, steam_codes, storage
 
-CLAUDE_EXE = r"C:\Users\netmin_m\AppData\Roaming\Claude\claude-code\2.1.128\claude.exe"
+# Bekannter Default-Install-Pfad fuer claude.exe — wird nur als allerletzter
+# Fallback genutzt. NT-549 Pass 2 (Lisbeth): nicht hardcoded auf eine Version
+# verlassen, sondern via Env-Var oder PATH suchen. Bei Claude-Updates (z.B.
+# 2.1.128 -> 2.2.0) waere ein hartkodierter Pfad sonst unauffindbar.
+CLAUDE_EXE_DEFAULT = r"C:\Users\netmin_m\AppData\Roaming\Claude\claude-code\2.1.128\claude.exe"
 DEFAULT_TIMEOUT = 120  # pro Prompt-Aufruf, in Sekunden
+
+
+def _resolve_claude_exe() -> str:
+    """Findet die claude.exe in dieser Reihenfolge:
+
+    1. Env-Var ``SID_CLAUDE_EXE`` — explizite Override fuer Tests / non-default Installs.
+    2. PATH-Lookup via ``shutil.which`` — akzeptiert ``claude``, ``claude.exe``, ``claude.cmd``.
+    3. ``CLAUDE_EXE_DEFAULT`` — bekannter Default-Pfad als letzter Fallback.
+
+    Lisbeth NT-549 (MEDIUM FUNCTIONAL): vorher war der Pfad hartkodiert auf
+    `2.1.128` und ein User-Profil — jedes Claude-Update oder ein anderes
+    Profil hat den Real-Pfad zerschossen.
+    """
+    explicit = os.environ.get("SID_CLAUDE_EXE", "").strip()
+    if explicit:
+        return explicit
+    for cand in ("claude", "claude.exe", "claude.cmd"):
+        found = shutil.which(cand)
+        if found:
+            return found
+    return CLAUDE_EXE_DEFAULT
 
 
 class TranslationError(RuntimeError):
@@ -84,8 +109,10 @@ class MockTranslator:
 class ClaudeCliTranslator:
     name = "claude-cli"
 
-    def __init__(self, exe_path: str = CLAUDE_EXE, timeout: int = DEFAULT_TIMEOUT):
-        self.exe = exe_path
+    def __init__(self, exe_path: str | None = None, timeout: int = DEFAULT_TIMEOUT):
+        # exe_path=None -> Auto-Resolve via Env / PATH / Default. Explizite
+        # Override (Tests, non-standard Installs) ueber Konstruktor-Argument.
+        self.exe = exe_path or _resolve_claude_exe()
         self.timeout = timeout
 
     def translate_lang(
@@ -177,26 +204,75 @@ Gib ausschliesslich einen JSON-Block zurueck, eingeschlossen in <SID_OUTPUT>-Mar
 Keine zusaetzlichen Texte vor oder nach den Markern."""
 
 
-_OUTPUT_RE = re.compile(r"<SID_OUTPUT>\s*(\{.*?\})\s*</SID_OUTPUT>", re.DOTALL)
+_OUTPUT_OPEN = "<SID_OUTPUT>"
+_OUTPUT_CLOSE = "</SID_OUTPUT>"
 
 
 def _parse_response(text: str, expected_fields: list[str]) -> dict[str, str]:
-    """Extrahiert das JSON aus <SID_OUTPUT>-Markern."""
-    m = _OUTPUT_RE.search(text)
-    if not m:
+    """Extrahiert das JSON aus <SID_OUTPUT>-Markern.
+
+    Lisbeth NT-549 Pass 2 (MEDIUM FUNCTIONAL): der vorige Parser war brittle:
+
+    1. Regex ``\\{.*?\\}`` non-greedy bricht beim ERSTEN ``}`` ab. Wenn ein
+       uebersetzter String selbst ein ``}`` enthaelt (z.B. CSS-aehnliche
+       Texte, Sysreqs mit "{ etwas }"), wird der Block frueh abgeschnitten
+       und das JSON-Decode failt.
+    2. Mehrere ``<SID_OUTPUT>``-Bloecke (LLM denkt zwischendurch nochmal nach
+       und setzt einen zweiten Block) wurden vom ``search()`` falsch zugeordnet
+       — der ERSTE wurde gewaehlt statt des letzten/finalen.
+    3. Es gab keine Validierung, dass alle ``expected_fields`` zurueckkamen.
+       Eine Antwort, die ein Feld weglaesst, wurde stillschweigend als
+       Erfolg behandelt — Translation-Datei wurde partial geupdated, der
+       fehlende Wert blieb stale.
+
+    Pass 2 Loesung:
+    - Letzten ``<SID_OUTPUT>`` ... ``</SID_OUTPUT>``-Block nehmen.
+    - JSON-Objekt mit ``json.JSONDecoder.raw_decode()`` extrahieren — der
+      Decoder respektiert String-Quoting korrekt und stoppt am eigentlichen
+      Objekt-Ende, unabhaengig von ``}``-Vorkommen in den Werten.
+    - Alle ``expected_fields`` muessen im Output sein, sonst Error.
+    """
+    last_open = text.rfind(_OUTPUT_OPEN)
+    if last_open == -1:
         raise TranslationError(
             f"Kein <SID_OUTPUT>-Block in der Claude-Antwort gefunden. "
             f"Antwort-Anfang: {text[:300]!r}"
         )
-    raw = m.group(1)
+    after_open = last_open + len(_OUTPUT_OPEN)
+    close_idx = text.find(_OUTPUT_CLOSE, after_open)
+    if close_idx == -1:
+        raise TranslationError(
+            f"Kein </SID_OUTPUT>-Marker nach Open-Tag (LLM-Antwort abgeschnitten?). "
+            f"Tail: {text[after_open:after_open + 300]!r}"
+        )
+    inner = text[after_open:close_idx]
+    obj_start = inner.find("{")
+    if obj_start == -1:
+        raise TranslationError(f"Kein JSON-Objekt im SID_OUTPUT-Block: {inner[:300]!r}")
+
+    decoder = json.JSONDecoder()
     try:
-        data = json.loads(raw)
+        data, _end = decoder.raw_decode(inner[obj_start:])
     except json.JSONDecodeError as e:
-        raise TranslationError(f"JSON-Decode-Fehler im SID_OUTPUT: {e}; raw={raw[:300]!r}")
+        raise TranslationError(
+            f"JSON-Decode-Fehler im SID_OUTPUT: {e}; raw={inner[obj_start:obj_start + 300]!r}"
+        )
     if not isinstance(data, dict):
         raise TranslationError(f"SID_OUTPUT ist kein Objekt: {type(data).__name__}")
-    # Nur erwartete Felder uebernehmen, andere sind Halluzinationen
-    return {k: str(v) for k, v in data.items() if k in expected_fields}
+
+    # Nur erwartete Felder uebernehmen, andere sind Halluzinationen.
+    # Werte werden zu str konvertiert, falls Claude versehentlich int/null sendet.
+    out = {k: str(v) if v is not None else "" for k, v in data.items() if k in expected_fields}
+
+    # Pass 2 Validation: jedes erwartete Feld muss zurueckkommen.
+    missing = [f for f in expected_fields if f not in out]
+    if missing:
+        raise TranslationError(
+            f"SID_OUTPUT fehlen {len(missing)} Feld(er): {missing}. "
+            f"Erhalten: {list(out.keys())}. "
+            f"Claude hat die Felder ausgelassen — kein partial update."
+        )
+    return out
 
 
 # --- High-level Operation ----------------------------------------------------

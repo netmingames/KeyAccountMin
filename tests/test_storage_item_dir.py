@@ -179,3 +179,34 @@ def test_pass10_lone_folder_with_alphanumeric_segment_matches(tmp_path: Path) ->
     p = tmp_path / "steam" / "42_1st_pass"
     p.mkdir(parents=True)
     assert item_dir(tmp_path, "steam", "42") == p
+
+
+def test_pass11_short_item_id_with_year_like_segment_refuses(tmp_path: Path) -> None:
+    """Pass 11 (Lisbeth NT-549 16:12 MEDIUM FUNCTIONAL): ein einstelliges
+    item_id "1" mit Folder "1_2024_update" muss refuse-en, weil "1_2024"
+    eine plausible compound id ist und meta.json fehlt.
+
+    Heuristik: x_component nur als Slug-Anteil akzeptiert, wenn
+    len(x_component) >= 4 UND len(item_id) >= 2."""
+    p = tmp_path / "steam" / "1_2024_update"
+    p.mkdir(parents=True)
+    with pytest.raises(FileNotFoundError):
+        item_dir(tmp_path, "steam", "1")
+
+
+def test_pass11_short_item_id_with_long_numeric_segment_refuses(tmp_path: Path) -> None:
+    """Pass 11 (Lisbeth NT-549 16:12 MEDIUM FUNCTIONAL): item_id "1" mit
+    Folder "1_1234_main" muss refuse-en — "1234" sieht nicht wie ein Jahr
+    aus, aber "1_1234" ist eine plausible compound id."""
+    p = tmp_path / "steam" / "1_1234_main"
+    p.mkdir(parents=True)
+    with pytest.raises(FileNotFoundError):
+        item_dir(tmp_path, "steam", "1")
+
+
+def test_pass11_pass10_year_like_match_still_works(tmp_path: Path) -> None:
+    """Pass 11 darf den Pass-10-Fall nicht regressieren: "777_2024_update"
+    mit Lookup "777" muss weiterhin matchen."""
+    p = tmp_path / "steam" / "777_2024_update"
+    p.mkdir(parents=True)
+    assert item_dir(tmp_path, "steam", "777") == p

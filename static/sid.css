@@ -208,7 +208,9 @@ footer {
   width: 100%;
   resize: vertical;
 }
-textarea.editor { min-height: 4em; }
+textarea.editor { min-height: 8em; }
+/* about ist der Spiel-Beschreibungs-Block (mehrere Absaetze) — extra Hoehe. */
+textarea.editor[data-field="about"] { min-height: 16em; }
 .editor:focus {
   outline: none;
   border-color: var(--accent);

@@ -211,3 +211,64 @@ def test_export_to_file_strips_diagnose_fields(tmp_path: Path) -> None:
     p = exporter.export_to_file(idir)
     file_data = json.loads(p.read_text(encoding="utf-8"))
     assert set(file_data.keys()) == {"itemid", "languages"}
+
+
+def test_export_to_file_accepts_precomputed_data(tmp_path: Path) -> None:
+    """NT-549 Pass 7 (Lisbeth 16:12 LOW FUNCTIONAL): export_to_file darf ein
+    vorberechnetes data-Dict uebernehmen, damit der Aufrufer dasselbe Dict
+    (inkl. skipped_translations) fuer Datei UND Summary nutzen kann."""
+    from core import exporter
+
+    idir = tmp_path / "steam" / "555_test"
+    _seed_minimal_item(idir)
+
+    # Vorberechnung mit kuenstlich gefuelltem skipped_translations
+    data = exporter.export_steam_loka(idir)
+    data["skipped_translations"] = ["french", "italian"]
+
+    p = exporter.export_to_file(idir, data=data)
+    file_data = json.loads(p.read_text(encoding="utf-8"))
+    # Datei selbst bleibt clean (Steam-kompatibel)
+    assert set(file_data.keys()) == {"itemid", "languages"}
+    # ...aber die Summary aus dem uebergebenen Dict zeigt skipped_translations
+    summary = exporter.export_summary(data)
+    assert summary["skipped_translations"] == ["french", "italian"]
+
+
+def test_api_export_summary_reports_skipped_translations(tmp_path: Path, monkeypatch) -> None:
+    """NT-549 Pass 7 (Lisbeth 16:12 LOW FUNCTIONAL): /export muss
+    skipped_translations in der API-Response melden — frueher hat app.py
+    die geschriebene Datei zurueckgelesen, wo skipped_translations bereits
+    gestrippt war, und damit eine Inkonsistenz zu /export-preview erzeugt."""
+    from fastapi.testclient import TestClient
+
+    import app as app_mod
+    monkeypatch.setattr(app_mod, "DATA_ROOT", tmp_path)
+
+    idir = tmp_path / "steam" / "555_test"
+    _seed_minimal_item(idir)
+    (idir / "translations").mkdir(parents=True, exist_ok=True)
+    # eine valide english + eine zerschossene french
+    (idir / "translations" / "english.json").write_text(
+        json.dumps({
+            "schema_version": 1,
+            "item_id": "555",
+            "lang": "english",
+            "fields": {"about": {"value": "EN", "stale": False, "manually_edited": False}},
+            "updated_at": "2026-05-08T16:00:00",
+        }),
+        encoding="utf-8",
+    )
+    (idir / "translations" / "french.json").write_text("{ broken json", encoding="utf-8")
+
+    client = TestClient(app_mod.app)
+
+    # /export-preview meldet skipped_translations korrekt
+    r1 = client.get("/api/items/steam/555/export-preview")
+    assert r1.status_code == 200, r1.text
+    assert "french" in r1.json()["summary"]["skipped_translations"]
+
+    # /export muss DASSELBE melden (frueher: leer)
+    r2 = client.post("/api/items/steam/555/export")
+    assert r2.status_code == 200, r2.text
+    assert "french" in r2.json()["summary"]["skipped_translations"]

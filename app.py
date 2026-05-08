@@ -518,20 +518,19 @@ def api_export_to_file(platform: str, item_id: str) -> dict:
     idir = _resolve_idir_with_meta(platform, item_id)
     # Lisbeth NT-550 16:05 Pass 4: vor dem Schreiben prueft _safe_export... ob
     # der Master ueberhaupt valide ist - sonst 422 statt halb geschriebener Datei.
-    _safe_export_steam_loka(idir, item_id)
+    # Lisbeth NT-549 16:12 Pass 7 (LOW FUNCTIONAL): das vorgerechnete Daten-
+    # Dict (inkl. skipped_translations) wird sowohl beim Schreiben als auch
+    # in der Summary wiederverwendet, damit /export-preview und /export
+    # konsistente skipped_translations melden (frueher hat /export die
+    # Datei zurueckgelesen, wo skipped_translations bereits gestrippt war).
+    data = _safe_export_steam_loka(idir, item_id)
     try:
-        out_path = exporter.export_to_file(idir)
-    except ValidationError as e:
+        out_path = exporter.export_to_file(idir, data=data)
+    except OSError as e:
         raise HTTPException(
-            status_code=422,
-            detail=f"Export fuer {item_id} nicht moeglich: master_*.json hat ungueltiges Schema: {e.errors()}",
+            status_code=500,
+            detail=f"Export-Datei fuer {item_id} konnte nicht geschrieben werden: {e}",
         )
-    except (json.JSONDecodeError, OSError, UnicodeDecodeError) as e:
-        raise HTTPException(
-            status_code=422,
-            detail=f"Export fuer {item_id} nicht moeglich: master_*.json unlesbar: {e}",
-        )
-    data = storage.read_json(out_path)
     return {
         "ok": True,
         "filename": out_path.name,

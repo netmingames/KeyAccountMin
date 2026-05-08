@@ -119,7 +119,7 @@ def export_steam_loka(idir: Path) -> dict:
     }
 
 
-def export_to_file(idir: Path) -> Path:
+def export_to_file(idir: Path, data: dict | None = None) -> Path:
     """Schreibt den Export nach exports/<timestamp>.json und gibt den Pfad zurueck.
 
     Lisbeth NT-549/NT-550 (MEDIUM FUNCTIONAL): Filename hatte Sekunden-
@@ -127,8 +127,14 @@ def export_to_file(idir: Path) -> Path:
     ueberschrieben. Jetzt mit Microsekunden — und zur Sicherheit nochmal
     ein Kollisions-Check (sehr unwahrscheinlich, aber unueberschreibbar):
     falls der Pfad doch existiert, haengen wir einen 4-stelligen Counter an.
+
+    NT-549 Pass 7 (Lisbeth 16:12 LOW FUNCTIONAL): ``data`` darf vorberechnet
+    uebergeben werden, damit der Aufrufer dasselbe Dict (inkl.
+    ``skipped_translations``) fuer die API-Response/Summary nutzen kann
+    statt nach dem Schreiben aus der gestrippten Datei zurueckzulesen.
     """
-    data = export_steam_loka(idir)
+    if data is None:
+        data = export_steam_loka(idir)
     exports_dir = idir / "exports"
     exports_dir.mkdir(parents=True, exist_ok=True)
     timestamp = _dt.datetime.now().strftime("%Y%m%d_%H%M%S_%f")

@@ -148,9 +148,28 @@ def test_resolve_claude_exe_uses_wildcard_scan(monkeypatch, tmp_path: Path) -> N
     monkeypatch.delenv("APPDATA", raising=False)
 
     resolved = _resolve_claude_exe()
-    # Lexikalisches Sortieren wackelt bei exotischen Versions-Spruengen, aber
-    # 2.2.0 > 2.1.128 als String.
     assert resolved == str(fake_root / "2.2.0" / "claude.exe")
+
+
+def test_resolve_claude_exe_picks_2_10_over_2_9(monkeypatch, tmp_path: Path) -> None:
+    """NT-548 Pass 10 (Lisbeth 15:33 MEDIUM FUNCTIONAL):
+    Versions-Sort darf nicht lexikalisch sein, sonst sortiert "2.9.0"
+    > "2.10.0" und der Resolver waehlt nach Upgrade die alte Version.
+    """
+    monkeypatch.delenv("SID_CLAUDE_EXE", raising=False)
+    monkeypatch.setattr("core.translator.shutil.which", lambda name: None)
+
+    fake_root = tmp_path / "AppData" / "Roaming" / "Claude" / "claude-code"
+    (fake_root / "2.9.0").mkdir(parents=True)
+    (fake_root / "2.9.0" / "claude.exe").write_text("alt")
+    (fake_root / "2.10.0").mkdir(parents=True)
+    (fake_root / "2.10.0" / "claude.exe").write_text("neu")
+
+    monkeypatch.setenv("USERPROFILE", str(tmp_path))
+    monkeypatch.delenv("APPDATA", raising=False)
+
+    resolved = _resolve_claude_exe()
+    assert resolved == str(fake_root / "2.10.0" / "claude.exe")
 
 
 def test_resolve_claude_exe_returns_marker_when_nothing_found(monkeypatch, tmp_path: Path) -> None:

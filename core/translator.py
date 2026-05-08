@@ -34,16 +34,36 @@ DEFAULT_TIMEOUT = 120  # pro Prompt-Aufruf, in Sekunden
 CLAUDE_EXE_DEFAULT = ""
 
 
+def _version_key(name: str) -> tuple:
+    """Sortier-Key fuer Versions-Ordner: zerlegt in numerische Segmente.
+
+    Beispiele:
+        "2.10.0" -> (1, 2, 10, 0)
+        "2.9.0"  -> (1, 2, 9, 0)
+        "2.1.128" -> (1, 2, 1, 128)
+        "draft"  -> (0, "draft")  # nicht-numerische Namen sortieren niedriger
+
+    Lisbeth NT-548 15:33: lexikalisches Sortieren brach bei 2.10.0 < 2.9.0.
+    Numerische Segment-Sortierung ist robust fuer Semver-artige Tags.
+    """
+    parts: list = []
+    for segment in name.split("."):
+        try:
+            parts.append(int(segment))
+        except ValueError:
+            return (0, name)  # nicht-numerisch -> hinter alle int-Versionen
+    return (1, *parts)
+
+
 def _scan_claude_install_dirs() -> str | None:
-    """NT-549 Pass 4 (Lisbeth 15:10 MEDIUM FUNCTIONAL): Wildcard-Scan ueber
-    bekannte Claude-Code-Install-Ordner pro User-Profil.
+    """NT-549 Pass 4 (Lisbeth 15:10) + NT-548 Pass 10 (Lisbeth 15:33):
+    Wildcard-Scan ueber bekannte Claude-Code-Install-Ordner pro User-Profil.
 
     Findet die jeweils neueste claude.exe unter
     ``%USERPROFILE%\\AppData\\Roaming\\Claude\\claude-code\\<version>\\claude.exe``,
-    so dass ein Versions-Upgrade (z.B. 2.1.128 -> 2.2.0) keinen manuellen
-    Eingriff verlangt. Vergleichswerkzeug: lexikalische Sortierung der
-    Versionsordner — fuer 0/1/2-stellige Versions-Komponenten reicht das,
-    bei groesseren Spruengen ggf. spaeter ueber packaging.version.
+    so dass ein Versions-Upgrade (z.B. 2.1.128 -> 2.2.0 -> 2.10.0) keinen
+    manuellen Eingriff verlangt. Sortierung ueber numerische Versions-Tuples
+    (siehe ``_version_key``), nicht lexikalisch.
 
     Returns: Pfad zur neuesten claude.exe oder None wenn nichts gefunden.
     """
@@ -60,9 +80,9 @@ def _scan_claude_install_dirs() -> str | None:
         if root in seen or not root.is_dir():
             continue
         seen.add(root)
-        for version_dir in sorted(root.iterdir(), reverse=True):
-            if not version_dir.is_dir():
-                continue
+        version_dirs = [d for d in root.iterdir() if d.is_dir()]
+        version_dirs.sort(key=lambda d: _version_key(d.name), reverse=True)
+        for version_dir in version_dirs:
             exe = version_dir / "claude.exe"
             if exe.exists():
                 found.append(exe)

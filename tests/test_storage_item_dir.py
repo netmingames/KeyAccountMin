@@ -150,12 +150,32 @@ def test_pass9_lone_compound_slug_with_numeric_subid_refuses(tmp_path: Path) -> 
     """Pass 9 (Lisbeth NT-548 14:59): einzelner unreadable Folder "1_2_main"
     fuer Lookup "1" — auch ohne kollidierenden Sibling — muss refuse-en.
 
-    Begruendung: erste Suffix-Komponente "2" ist rein numerisch und damit
-    plausibel Teil einer laengeren id "1_2". Bei numerischen ids (Steam
-    app ids) ist das die Norm.
+    Begruendung: erste Suffix-Komponente "2" ist rein numerisch + kurz und
+    damit plausibel Teil einer laengeren id "1_2".
     """
     main = tmp_path / "steam" / "1_2_main"
     main.mkdir(parents=True)
     # kein meta.json, keine anderen Folder
     with pytest.raises(FileNotFoundError):
         item_dir(tmp_path, "steam", "1")
+
+
+def test_pass10_lone_folder_with_long_numeric_segment_matches(tmp_path: Path) -> None:
+    """Pass 10 (Lisbeth NT-548 15:33): "777_2024_update" mit Lookup "777"
+    soll matchen, weil "2024" (4-stellig) wie ein Jahres-/Slug-Anteil
+    aussieht und nicht wie eine kurze Sub-id-Erweiterung.
+
+    Heuristik (c3): nur first components mit <= 3 Ziffern gelten als
+    Sub-id-Indikator. Alles laengere wird als Slug akzeptiert.
+    """
+    p = tmp_path / "steam" / "777_2024_update"
+    p.mkdir(parents=True)
+    assert item_dir(tmp_path, "steam", "777") == p
+
+
+def test_pass10_lone_folder_with_alphanumeric_segment_matches(tmp_path: Path) -> None:
+    """Pass 10: "42_1st_pass" mit Lookup "42" matched — first component
+    "1st" ist nicht rein numerisch (isdigit()=False), also kein Sub-id."""
+    p = tmp_path / "steam" / "42_1st_pass"
+    p.mkdir(parents=True)
+    assert item_dir(tmp_path, "steam", "42") == p

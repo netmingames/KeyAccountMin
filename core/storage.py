@@ -180,16 +180,17 @@ def item_dir(data_root: Path, platform: str, item_id: str, name: str | None = No
             )
             if collision:
                 continue
-            # Filter (c3) NT-548 Pass 9 (Lisbeth 14:59):
-            # Auch ohne sichtbare Sibling-Kollision ist `<item_id>_<digits>...`
-            # ein starkes Indiz fuer eine compound-id (numerische ids sind die
-            # Norm bei Steam app ids). Lookup auf "1" mit alleinigem Folder
-            # "1_2_main" muss refuse-en, weil "1_2" plausibel die echte id ist.
-            # Heuristik: wenn die erste Suffix-Komponente rein numerisch ist,
-            # gehoert d wahrscheinlich zu einer laengeren id und nicht zu
-            # item_id. Alphabetische erste Komponenten (z.B. "777_my_game" mit
-            # Suffix "my_game") bleiben weiterhin akzeptiert.
-            if x_component.isdigit():
+            # Filter (c3) NT-548 Pass 9/10 (Lisbeth 14:59 + 15:33):
+            # Heuristik fuer "Suffix-Komponente sieht aus wie Sub-id-Erweiterung".
+            # Pass 9 hat alle numerischen first components abgelehnt; Pass 10-
+            # Lisbeth zeigte zu Recht, dass z.B. "777_2024_update" (Jahresdatum
+            # + Slug) damit faelschlich blockiert wuerde. Verfeinerung:
+            # nur kurze (<= 3-stellige) numerische first components gelten als
+            # plausibler compound-id-Sub-Index — "1_2_main" lookup "1" ja,
+            # "777_2024_update" lookup "777" nein (4-stellig => Jahres-/Slug-
+            # Anteil, kein Sub-id). Heuristik bleibt eine Approximation; ohne
+            # meta.json ist ein 100%-Verdict prinzipiell nicht moeglich.
+            if x_component.isdigit() and len(x_component) <= 3:
                 continue
         candidates.append(d)
     if len(candidates) == 1:

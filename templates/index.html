@@ -2,7 +2,7 @@
 <html lang="de">
 <head>
   <meta charset="utf-8">
-  <title>{{ name }}</title>
+  <title>Sid / KeyAccountMin</title>
   <link rel="stylesheet" href="/static/sid.css">
 </head>
 <body>
@@ -11,58 +11,28 @@
     <p class="subtitle">Multiplattform Listings &amp; Lokalisierung — Werkbank fuer Steam, Microsoft Store, XBox, Google Play</p>
   </header>
 
-  <main>
-    <section class="card">
-      <h2>Status</h2>
-      <p>Phase 1 — Datenmodell + Importer aktiv. Tab-UI folgt mit NT-548.</p>
-      <ul>
-        <li>Health: <a href="/api/health">/api/health</a></li>
-        <li>Items: <a href="/api/items">/api/items</a></li>
-        <li>Sprachen: <a href="/api/languages">/api/languages</a></li>
-        <li>Version: <code>{{ version }}</code></li>
-      </ul>
-    </section>
+  <!-- Ebene 1: Plattform-Tabs -->
+  <nav class="tabs platform-tabs" id="tabs-platform" role="tablist" aria-label="Plattform"></nav>
 
-    <section class="card">
-      <h2>Items</h2>
-      {% if items %}
-      <table class="items">
-        <thead>
-          <tr><th>Plattform</th><th>ID</th><th>Name</th><th>Sprachen</th><th>Aktualisiert</th></tr>
-        </thead>
-        <tbody>
-        {% for it in items %}
-          <tr>
-            <td>{{ it.platform }}</td>
-            <td><code>{{ it.item_id }}</code></td>
-            <td>{{ it.name }}{% if it.early_access %} <span class="muted">(EA)</span>{% endif %}</td>
-            <td>{{ it.active_languages|length }} aktiv</td>
-            <td class="muted">{{ it.updated_at }}</td>
-          </tr>
-        {% endfor %}
-        </tbody>
-      </table>
-      {% else %}
-      <p class="muted">Noch keine Items angelegt. Erst-Import via:</p>
-      <pre><code>python import_storepage.py data/_samples/storepage_1141975_all.json --name "Passage 5"</code></pre>
-      {% endif %}
-    </section>
+  <!-- Ebene 2: Item-Tabs -->
+  <nav class="tabs item-tabs" id="tabs-item" role="tablist" aria-label="Item"></nav>
 
-    <section class="card">
-      <h2>Roadmap (Auszug)</h2>
-      <ol>
-        <li>Phase 1 — MVP Passage 5 Steam (Datenmodell, UI, Uebersetzung, Export)</li>
-        <li>Phase 2 — Grafiken/Assets</li>
-        <li>Phase 3 — Achievements</li>
-        <li>Phase 4 — Steam-Direktupload (Playwright)</li>
-        <li>Phase 5+ — Microsoft Store, XBox, Google Play, ...</li>
-      </ol>
-      <p class="muted">Volltext: <code>ROADMAP.md</code> im Repo.</p>
-    </section>
+  <!-- Ebene 3: Sub-Tabs -->
+  <nav class="tabs sub-tabs" id="tabs-sub" role="tablist" aria-label="Bereich"></nav>
+
+  <main id="content">
+    <div class="loading muted">Lade...</div>
   </main>
 
   <footer>
-    <span class="muted">netmin games GmbH — {{ name }} v{{ version }}</span>
+    <span class="muted">netmin games GmbH — Sid v<span id="version">?</span></span>
   </footer>
+
+  <!-- Modal: neue Plattform / neues Item / Sprachen -->
+  <dialog id="modal">
+    <div class="modal-content"></div>
+  </dialog>
+
+  <script src="/static/sid.js"></script>
 </body>
 </html>

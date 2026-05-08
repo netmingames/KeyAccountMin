@@ -20,8 +20,9 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from pydantic import BaseModel
 
-from core import schema, steam_codes, storage
+from core import edit_ops, labels, schema, steam_codes, storage
 
 VERSION = "0.2.0"
 NAME = "Sid / KeyAccountMin"
@@ -167,6 +168,115 @@ def api_languages() -> dict:
             for l in steam_codes.STEAM_LANGS
         ],
     }
+
+
+@app.get("/api/fields")
+def api_fields() -> dict:
+    """Liefert Feld-Metadaten fuer das UI: technischer Name, Label, multiline, hint."""
+    out = []
+    for f in schema.STEAM_FIELDS_STANDARD:
+        out.append({
+            "field": f,
+            "label": labels.label(f),
+            "multiline": labels.is_multiline(f),
+            "hint": labels.hint(f),
+            "block": "standard",
+        })
+    for f in schema.STEAM_FIELDS_EA:
+        out.append({
+            "field": f,
+            "label": labels.label(f),
+            "multiline": labels.is_multiline(f),
+            "hint": labels.hint(f),
+            "block": "early_access",
+        })
+    return {"fields": out}
+
+
+# --- Edit Endpoints (NT-548) -------------------------------------------------
+
+class _ValueBody(BaseModel):
+    value: str
+
+
+class _LanguagesBody(BaseModel):
+    languages: list[str]
+
+
+class _EarlyAccessBody(BaseModel):
+    enabled: bool
+
+
+class _CreateItemBody(BaseModel):
+    platform: str
+    item_id: str
+    name: str
+    master_lang: str = "german"
+    early_access: bool = False
+
+
+def _resolve_idir(platform: str, item_id: str) -> Path:
+    try:
+        return storage.item_dir(DATA_ROOT, platform, item_id)
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
+@app.put("/api/items/{platform}/{item_id}/master/{field}")
+def api_put_master_field(platform: str, item_id: str, field: str, body: _ValueBody) -> dict:
+    idir = _resolve_idir(platform, item_id)
+    try:
+        result = edit_ops.update_master_field(idir, field, body.value)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {"ok": True, **result}
+
+
+@app.put("/api/items/{platform}/{item_id}/translation/{lang}/{field}")
+def api_put_translation_field(platform: str, item_id: str, lang: str, field: str, body: _ValueBody) -> dict:
+    if not steam_codes.is_valid(lang):
+        raise HTTPException(status_code=400, detail=f"Unbekannter Steam-Sprachcode: {lang}")
+    idir = _resolve_idir(platform, item_id)
+    try:
+        result = edit_ops.update_translation_field(idir, lang, field, body.value)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {"ok": True, **result}
+
+
+@app.put("/api/items/{platform}/{item_id}/active-languages")
+def api_put_active_languages(platform: str, item_id: str, body: _LanguagesBody) -> dict:
+    idir = _resolve_idir(platform, item_id)
+    try:
+        result = edit_ops.set_active_languages(idir, body.languages)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {"ok": True, **result}
+
+
+@app.put("/api/items/{platform}/{item_id}/early-access")
+def api_put_early_access(platform: str, item_id: str, body: _EarlyAccessBody) -> dict:
+    idir = _resolve_idir(platform, item_id)
+    result = edit_ops.set_early_access(idir, body.enabled)
+    return {"ok": True, **result}
+
+
+@app.post("/api/items")
+def api_post_item(body: _CreateItemBody) -> dict:
+    try:
+        idir = edit_ops.create_item(
+            DATA_ROOT,
+            platform=body.platform,
+            item_id=body.item_id,
+            name=body.name,
+            master_lang=body.master_lang,
+            early_access=body.early_access,
+        )
+    except FileExistsError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {"ok": True, "dir": idir.name, "platform": body.platform, "item_id": body.item_id}
 
 
 if __name__ == "__main__":

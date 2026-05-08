@@ -310,6 +310,10 @@ function bindInhaltHandlers(it) {
         // stale-Class entfernen
         e.target.parentElement.classList.remove("stale");
         flashOk(e.target);
+        // Cache invalidieren, damit die Translation-Summary (filled/stale/
+        // manually_edited Counts) im Sprachselektor und in den Header-Zahlen
+        // beim naechsten Render aktuell ist.
+        delete state.itemCache[state.currentItemKey];
       } catch (err) {
         alert("Translation speichern fehlgeschlagen: " + err);
       }

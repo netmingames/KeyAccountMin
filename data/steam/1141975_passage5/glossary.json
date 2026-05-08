@@ -1,0 +1,60 @@
+{
+  "schema_version": 1,
+  "entries": [
+    {
+      "term": "Passage 5",
+      "rule": "keep",
+      "note": "Spieltitel — woertlich uebernehmen, nicht in 'Passage Five' o.ae. uebersetzen"
+    },
+    {
+      "term": "Clear",
+      "rule": "keep",
+      "note": "Spielmodus-Name — bleibt in allen Sprachen 'Clear'"
+    },
+    {
+      "term": "Continue",
+      "rule": "keep",
+      "note": "Spielmodus-Name"
+    },
+    {
+      "term": "Classic",
+      "rule": "keep",
+      "note": "Spielmodus-Name"
+    },
+    {
+      "term": "Construct",
+      "rule": "keep",
+      "note": "Spielmodus-Name"
+    },
+    {
+      "term": "Coop",
+      "rule": "keep",
+      "note": "Spielmodus-Name"
+    },
+    {
+      "term": "Duell",
+      "rule": "translate",
+      "note": "Multiplayer-Modus — kann lokalisiert werden (z.B. 'Duel'/'Duelo'). Im DE-Master heisst es 'Duell'."
+    },
+    {
+      "term": "Master",
+      "rule": "translate",
+      "note": "Schwierigkeitsgrad-Name — 'Meister' im DE, kann in andere Sprachen analog uebersetzt werden"
+    },
+    {
+      "term": "Streak",
+      "rule": "translate",
+      "note": "Bonus-System — 'Streak' im EN ist gaengig, andere Sprachen koennen es lokalisieren"
+    },
+    {
+      "term": "netmin games",
+      "rule": "keep",
+      "note": "Firmenname"
+    },
+    {
+      "term": "Steam",
+      "rule": "keep",
+      "note": "Plattformname"
+    }
+  ]
+}

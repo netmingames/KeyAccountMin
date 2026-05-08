@@ -341,3 +341,72 @@ dialog#modal::backdrop {
   padding: 2rem;
   text-align: center;
 }
+
+.btn.small { padding: 0.2rem 0.5rem; font-size: 0.85em; }
+
+.spinner {
+  display: inline-block;
+  width: 0.85em;
+  height: 0.85em;
+  border: 2px solid var(--muted);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+  vertical-align: -2px;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.toast {
+  position: fixed;
+  bottom: 1.5rem;
+  right: 1.5rem;
+  background: var(--card);
+  color: var(--fg);
+  padding: 0.7rem 1rem;
+  border-radius: 6px;
+  border-left: 4px solid var(--ok);
+  max-width: 480px;
+  box-shadow: 0 6px 20px rgba(0,0,0,0.5);
+  opacity: 0;
+  transform: translateY(20px);
+  transition: opacity 0.2s, transform 0.2s;
+  pointer-events: none;
+  z-index: 1000;
+  font-size: 0.92em;
+  line-height: 1.4;
+}
+.toast.visible { opacity: 1; transform: translateY(0); }
+.toast.error { border-left-color: var(--stale); }
+.toast.ok { border-left-color: var(--ok); }
+
+.glossary-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.5rem 0 1rem;
+  font-size: 0.9em;
+}
+.glossary-table th, .glossary-table td {
+  padding: 0.3rem 0.4rem;
+  text-align: left;
+  vertical-align: top;
+  border-bottom: 1px solid #2e2e2e;
+}
+.glossary-table input[type=text],
+.glossary-table select {
+  width: 100%;
+  background: #1d1d1d;
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 0.25rem 0.4rem;
+  font-family: inherit;
+}
+.glossary-table .del {
+  background: transparent;
+  color: var(--stale);
+  border-color: transparent;
+  font-weight: bold;
+  font-size: 1em;
+  padding: 0.1rem 0.5rem;
+}
+.glossary-table .del:hover { background: rgba(193, 74, 74, 0.2); }

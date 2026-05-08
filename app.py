@@ -22,7 +22,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 
-from core import edit_ops, labels, schema, steam_codes, storage
+from core import edit_ops, glossary as glossary_mod, labels, schema, steam_codes, storage, translator
 
 VERSION = "0.2.0"
 NAME = "Sid / KeyAccountMin"
@@ -259,6 +259,70 @@ def api_put_early_access(platform: str, item_id: str, body: _EarlyAccessBody) ->
 
 _SUPPORTED_PLATFORMS = {"steam"}
 _SUPPORTED_MASTER_LANGS = {"german"}
+
+
+class _TranslateBody(BaseModel):
+    fields: list[str] | None = None
+    engine: str | None = None  # "claude" | "mock" | None (= aus env SID_TRANSLATOR)
+
+
+class _GlossaryEntryBody(BaseModel):
+    term: str
+    rule: str = "keep"  # "keep" | "translate"
+    note: str = ""
+
+
+class _GlossaryBody(BaseModel):
+    entries: list[_GlossaryEntryBody]
+
+
+@app.post("/api/items/{platform}/{item_id}/translate/{lang}")
+def api_translate_lang(platform: str, item_id: str, lang: str, body: _TranslateBody) -> dict:
+    if not steam_codes.is_valid(lang):
+        raise HTTPException(status_code=400, detail=f"Unbekannter Steam-Sprachcode: {lang}")
+    idir = _resolve_idir(platform, item_id)
+
+    # Engine-Auswahl ohne env-var-Mutation: explizite Translator-Instanz
+    tx = None
+    if body.engine == "mock":
+        tx = translator.MockTranslator()
+    elif body.engine in ("claude", "claude-cli"):
+        tx = translator.ClaudeCliTranslator()
+    # else: get_translator() innerhalb translate_item_lang nimmt env
+
+    try:
+        result = translator.translate_item_lang(
+            idir, lang, fields=body.fields, translator=tx,
+        )
+    except translator.TranslationError as e:
+        raise HTTPException(status_code=502, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {
+        "ok": True,
+        "lang": result.lang,
+        "engine": result.engine,
+        "duration_seconds": round(result.duration_seconds, 2),
+        "fields_translated": list(result.fields_translated.keys()),
+        "fields_skipped": result.fields_skipped,
+    }
+
+
+@app.get("/api/items/{platform}/{item_id}/glossary")
+def api_get_glossary(platform: str, item_id: str) -> dict:
+    idir = _resolve_idir(platform, item_id)
+    return glossary_mod.load(idir)
+
+
+@app.put("/api/items/{platform}/{item_id}/glossary")
+def api_put_glossary(platform: str, item_id: str, body: _GlossaryBody) -> dict:
+    idir = _resolve_idir(platform, item_id)
+    g = {"entries": [e.model_dump() for e in body.entries]}
+    try:
+        glossary_mod.save(idir, g)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {"ok": True, "n_entries": len(g["entries"])}
 
 
 @app.post("/api/items")

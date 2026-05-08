@@ -188,8 +188,14 @@ class ClaudeCliTranslator:
     ) -> dict[str, str]:
         prompt = _build_prompt(master_fields, lang_code, lang_display, glossary_block, style_block)
         try:
+            # Prompt VIA STDIN, NICHT als CLI-Argument. Bei Prompts ueber ~1k chars
+            # mit eingebetteten JSON-Quotes verstuemmelt claude.exe die CLI-Variante
+            # auf Windows (Test 08.05.2026, NT-558 Live: gleicher Prompt als arg
+            # -> Claude antwortet "keinen zu uebersetzenden Text"; via stdin ->
+            # sauberer SID_OUTPUT-Block). Stdin umgeht command-line-Quoting komplett.
             r = subprocess.run(
-                [self.exe, "-p", "--disable-slash-commands", prompt],
+                [self.exe, "-p", "--disable-slash-commands"],
+                input=prompt,
                 capture_output=True,
                 text=True,
                 encoding="utf-8",

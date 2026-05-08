@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <title>{{ name }}</title>
+  <link rel="stylesheet" href="/static/sid.css">
+</head>
+<body>
+  <header>
+    <h1>💼 Sid <span class="muted">/ KeyAccountMin</span></h1>
+    <p class="subtitle">Multiplattform Listings &amp; Lokalisierung — Werkbank fuer Steam, Microsoft Store, XBox, Google Play</p>
+  </header>
+
+  <main>
+    <section class="card">
+      <h2>Status</h2>
+      <p>Phase 0 — Foundation. Skelett laeuft, UI folgt mit den naechsten Tickets.</p>
+      <ul>
+        <li>Health: <a href="/api/health">/api/health</a></li>
+        <li>Version: <code>{{ version }}</code></li>
+      </ul>
+    </section>
+
+    <section class="card">
+      <h2>Roadmap (Auszug)</h2>
+      <ol>
+        <li>Phase 1 — MVP Passage 5 Steam (Datenmodell, UI, Uebersetzung, Export)</li>
+        <li>Phase 2 — Grafiken/Assets</li>
+        <li>Phase 3 — Achievements</li>
+        <li>Phase 4 — Steam-Direktupload (Playwright)</li>
+        <li>Phase 5+ — Microsoft Store, XBox, Google Play, ...</li>
+      </ol>
+      <p class="muted">Volltext: <code>ROADMAP.md</code> im Repo.</p>
+    </section>
+  </main>
+
+  <footer>
+    <span class="muted">netmin games GmbH — {{ name }} v{{ version }}</span>
+  </footer>
+</body>
+</html>

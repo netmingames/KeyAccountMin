@@ -1,0 +1,31 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+.venv/
+env/
+ENV/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Sid runtime
+*.log
+data/_runtime/
+data/**/exports/*.json
+!data/**/exports/.gitkeep
+
+# Lokale Configs / Secrets
+.env
+.env.local
+config.local.yaml

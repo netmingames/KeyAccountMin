@@ -23,7 +23,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, ValidationError
 
-from core import edit_ops, exporter, glossary as glossary_mod, labels, schema, steam_codes, storage, translator
+from core import ea_exporter, edit_ops, exporter, glossary as glossary_mod, labels, schema, steam_codes, storage, translator
 
 VERSION = "0.2.0"
 NAME = "Sid / KeyAccountMin"
@@ -183,7 +183,21 @@ def api_get_translation(platform: str, item_id: str, lang: str) -> dict:
     tpath = storage.translation_path(idir, lang)
     if not tpath.exists():
         raise HTTPException(status_code=404, detail=f"Keine Translation fuer {lang}")
-    t = schema.TranslationDocument(**storage.read_json(tpath))
+    # Lisbeth NT-550 16:05 Pass 4 (MEDIUM FUNCTIONAL): kaputte Translation-
+    # Datei (Schema/JSON/UTF-8/IO) -> 422 statt 500. Frontend rendert dann
+    # einen Fehler-State im Editor.
+    try:
+        t = schema.TranslationDocument(**storage.read_json(tpath))
+    except ValidationError as e:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Translation {lang} fuer {item_id} hat ungueltiges Schema: {e.errors()}",
+        )
+    except (json.JSONDecodeError, OSError, UnicodeDecodeError) as e:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Translation {lang} fuer {item_id} unlesbar: {e}",
+        )
     return t.model_dump()
 
 
@@ -413,11 +427,34 @@ def api_put_glossary(platform: str, item_id: str, body: _GlossaryBody) -> dict:
     return {"ok": True, "n_entries": len(g["entries"])}
 
 
+def _safe_export_steam_loka(idir: Path, item_id: str) -> dict:
+    """Wrapper um exporter.export_steam_loka mit kontrollierten Fehlern.
+
+    Lisbeth NT-550 16:05 Pass 4 (MEDIUM FUNCTIONAL): /export-preview und
+    /export liessen exceptions aus exporter.export_steam_loka() (kommen aus
+    edit_ops.read_master() bei korrupter master_*.json) als 500 durch. Hier
+    ueberfuehren wir Validation-/JSON-/IO-/UTF-8-Fehler in 422, konsistent
+    mit api_get_item().
+    """
+    try:
+        return exporter.export_steam_loka(idir)
+    except ValidationError as e:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Export fuer {item_id} nicht moeglich: master_*.json hat ungueltiges Schema: {e.errors()}",
+        )
+    except (json.JSONDecodeError, OSError, UnicodeDecodeError) as e:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Export fuer {item_id} nicht moeglich: master_*.json unlesbar: {e}",
+        )
+
+
 @app.get("/api/items/{platform}/{item_id}/export-preview")
 def api_export_preview(platform: str, item_id: str) -> dict:
     """Liefert das Export-JSON inline ohne die Datei zu schreiben."""
     idir = _resolve_idir_with_meta(platform, item_id)
-    data = exporter.export_steam_loka(idir)
+    data = _safe_export_steam_loka(idir, item_id)
     return {"summary": exporter.export_summary(data), "data": data}
 
 
@@ -425,7 +462,21 @@ def api_export_preview(platform: str, item_id: str) -> dict:
 def api_export_to_file(platform: str, item_id: str) -> dict:
     """Schreibt den Export nach exports/<ts>.json und gibt Pfad + Summary zurueck."""
     idir = _resolve_idir_with_meta(platform, item_id)
-    out_path = exporter.export_to_file(idir)
+    # Lisbeth NT-550 16:05 Pass 4: vor dem Schreiben prueft _safe_export... ob
+    # der Master ueberhaupt valide ist - sonst 422 statt halb geschriebener Datei.
+    _safe_export_steam_loka(idir, item_id)
+    try:
+        out_path = exporter.export_to_file(idir)
+    except ValidationError as e:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Export fuer {item_id} nicht moeglich: master_*.json hat ungueltiges Schema: {e.errors()}",
+        )
+    except (json.JSONDecodeError, OSError, UnicodeDecodeError) as e:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Export fuer {item_id} nicht moeglich: master_*.json unlesbar: {e}",
+        )
     data = storage.read_json(out_path)
     return {
         "ok": True,
@@ -457,6 +508,49 @@ def api_download_export(platform: str, item_id: str, filename: str):
     except ValueError:
         raise HTTPException(status_code=400, detail="Pfad ausserhalb erlaubtem Bereich")
     return FileResponse(p, media_type="application/json", filename=filename)
+
+
+# --- Early-Access-Export (NT-551) -------------------------------------------
+
+@app.get("/api/items/{platform}/{item_id}/ea-status")
+def api_ea_status(platform: str, item_id: str) -> dict:
+    """Liefert Liste der aktiven Sprachen mit EA-Feld-Fuellstand."""
+    idir = _resolve_idir(platform, item_id)
+    return {"languages": ea_exporter.list_ea_languages(idir)}
+
+
+@app.get("/api/items/{platform}/{item_id}/ea-export/{lang}.txt")
+def api_ea_export_text(platform: str, item_id: str, lang: str):
+    """Liefert die EA-Q&A-Texte einer Sprache als Plaintext-Download."""
+    if not steam_codes.is_valid(lang):
+        raise HTTPException(status_code=400, detail=f"Unbekannter Steam-Sprachcode: {lang}")
+    idir = _resolve_idir(platform, item_id)
+    text = ea_exporter.render_ea_text(idir, lang)
+    filename = ea_exporter.filename_for_lang(idir, lang)
+    from fastapi.responses import Response
+    return Response(
+        content=text,
+        media_type="text/plain; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@app.get("/api/items/{platform}/{item_id}/ea-export.zip")
+def api_ea_export_zip(platform: str, item_id: str):
+    """Sammel-ZIP mit allen aktiven Sprachen als .txt-Dateien + README."""
+    idir = _resolve_idir(platform, item_id)
+    try:
+        data = ea_exporter.export_ea_bundle_zip(idir)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    meta = edit_ops.read_meta(idir)
+    slug = storage._slugify(meta.name)
+    from fastapi.responses import Response
+    return Response(
+        content=data,
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{slug}_ea_bundle.zip"'},
+    )
 
 
 @app.post("/api/items")

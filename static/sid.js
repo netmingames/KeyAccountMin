@@ -217,14 +217,29 @@ function renderInhalt(it, targetLangs) {
   const standardFields = state.fields.filter(f => f.block === "standard");
   const eaFields = state.fields.filter(f => f.block === "early_access");
 
-  const renderFieldGroup = (fields, title) => {
+  const renderFieldGroup = (fields, title, headerExtra = "") => {
     if (!fields.length) return "";
     const rows = fields.map(f => renderFieldRow(it, f)).join("");
     return `<section class="card">
       <h2>${escapeHtml(title)}</h2>
+      ${headerExtra}
       <div class="fields">${rows}</div>
     </section>`;
   };
+
+  // EA-Block-Header: Hinweis + Export-Buttons (NT-551)
+  const targetLangCode = state.currentTargetLang;
+  const targetLangDisp = targetLangCode ? (state.langByCode[targetLangCode]?.display || targetLangCode) : "";
+  const eaHeader = `
+    <div class="ea-warning">
+      ⚠ Diese Felder gehoeren ins Steam-Backend unter "Early Access" — sie werden NICHT
+      ueber das Lokalisierungs-JSON hochgeladen. Sid liefert sie als Plaintext zum Copy-Paste.
+    </div>
+    <div class="ea-actions">
+      ${targetLangCode ? `<a class="btn small" href="/api/items/${it.meta.platform}/${it.meta.item_id}/ea-export/${targetLangCode}.txt" download>📄 ${escapeHtml(targetLangDisp)} als Text</a>` : ""}
+      <a class="btn small" href="/api/items/${it.meta.platform}/${it.meta.item_id}/ea-export/${it.meta.master_lang}.txt" download>📄 ${escapeHtml(masterDisplay)} (Master) als Text</a>
+      <a class="btn small primary" href="/api/items/${it.meta.platform}/${it.meta.item_id}/ea-export.zip" download>📦 Alle Sprachen als ZIP</a>
+    </div>`;
 
   return `
     <section class="card item-header">
@@ -238,7 +253,7 @@ function renderInhalt(it, targetLangs) {
       </div>
     </section>
     ${renderFieldGroup(standardFields, "Inhalt")}
-    ${it.meta.early_access ? renderFieldGroup(eaFields, "Early Access (Q&A)") : ""}
+    ${it.meta.early_access ? renderFieldGroup(eaFields, "Early Access (Q&A)", eaHeader) : ""}
   `;
 }
 
@@ -400,8 +415,34 @@ async function loadAndRenderTargetLang(it, lang) {
   const tokenKey = `${expectedItemKey}|${lang}`;
   const myToken = (state.langRenderTokens[tokenKey] || 0) + 1;
   state.langRenderTokens[tokenKey] = myToken;
-  const t = await fetch(`/api/items/${it.meta.platform}/${it.meta.item_id}/translation/${lang}`).then(r => r.json());
-  if (t.detail) return; // 404
+  // Lisbeth NT-550 16:05 Pass 4 (MEDIUM FUNCTIONAL): bei kaputter
+  // translations/<lang>.json kann der Endpoint 422/500 + JSON-Body mit
+  // "detail" liefern. Vorher wurde blind .fields dereferenziert -> Editor
+  // crasht. Jetzt: response.ok pruefen, im Fehlerfall Felder leeren statt
+  // crashen. 404 ist weiterhin still (Translation-Datei existiert nicht
+  // als legitimer Fall).
+  const resp = await fetch(`/api/items/${it.meta.platform}/${it.meta.item_id}/translation/${lang}`);
+  if (resp.status === 404) return;
+  let t;
+  try {
+    t = await resp.json();
+  } catch (_) {
+    t = null;
+  }
+  if (!resp.ok || !t || !t.fields) {
+    // Editor in Fehler-Zustand: leere target-Editoren, kein Crash, klare
+    // Warnung im UI. Race-Schutz unten greift weiterhin.
+    if (state.currentTargetLang !== lang) return;
+    if (state.currentItemKey !== expectedItemKey) return;
+    if (state.langRenderTokens[tokenKey] !== myToken) return;
+    for (const row of document.querySelectorAll(".field-row")) {
+      const targetEditor = row.querySelector(".editor.target");
+      const flags = row.querySelector(".field-flags");
+      if (targetEditor) { targetEditor.value = ""; targetEditor.dataset.lastValue = ""; }
+      if (flags) flags.innerHTML = `<span class="flag stale">unlesbar</span>`;
+    }
+    return;
+  }
   // Race-Schutz: state.currentTargetLang ODER state.currentItemKey kann sich
   // waehrend des fetch geaendert haben (User wechselt Sprache oder Item).
   // Wenn die Antwort nicht mehr zur aktuellen Auswahl passt, abbrechen — sonst

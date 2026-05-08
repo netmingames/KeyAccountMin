@@ -161,6 +161,91 @@ def test_get_item_returns_422_on_schema_invalid_meta(app_with_data, tmp_path: Pa
     assert "Schema" in resp.json()["detail"]
 
 
+def test_export_preview_returns_422_on_corrupt_master(app_with_data, tmp_path: Path) -> None:
+    """NT-550 Pass 4 (Lisbeth 16:05 MEDIUM FUNCTIONAL): /export-preview soll
+    bei kaputter master_*.json kontrolliert 422 liefern, nicht 500."""
+    from fastapi.testclient import TestClient
+    import json as _json
+
+    idir = tmp_path / "steam" / "1141975_passage5"
+    idir.mkdir(parents=True)
+    (idir / "meta.json").write_text(
+        _json.dumps({
+            "platform": "steam",
+            "item_id": "1141975",
+            "name": "Passage 5",
+            "active_languages": [],
+            "early_access": False,
+            "schema_version": 1,
+            "master_lang": "german",
+        }),
+        encoding="utf-8",
+    )
+    (idir / "master_de.json").write_text("{ corrupt", encoding="utf-8")
+
+    client = TestClient(app_with_data.app)
+    resp = client.get("/api/items/steam/1141975/export-preview")
+    assert resp.status_code == 422
+    assert "master" in resp.json()["detail"].lower()
+
+
+def test_export_to_file_returns_422_on_corrupt_master(app_with_data, tmp_path: Path) -> None:
+    """NT-550 Pass 4: POST /export bei kaputter master_*.json -> 422."""
+    from fastapi.testclient import TestClient
+    import json as _json
+
+    idir = tmp_path / "steam" / "1141975_passage5"
+    idir.mkdir(parents=True)
+    (idir / "meta.json").write_text(
+        _json.dumps({
+            "platform": "steam",
+            "item_id": "1141975",
+            "name": "Passage 5",
+            "active_languages": [],
+            "early_access": False,
+            "schema_version": 1,
+            "master_lang": "german",
+        }),
+        encoding="utf-8",
+    )
+    (idir / "master_de.json").write_text("{ corrupt", encoding="utf-8")
+
+    client = TestClient(app_with_data.app)
+    resp = client.post("/api/items/steam/1141975/export")
+    assert resp.status_code == 422
+
+
+def test_get_translation_returns_422_on_corrupt_file(app_with_data, tmp_path: Path) -> None:
+    """NT-550 Pass 4 (Lisbeth 16:05 MEDIUM FUNCTIONAL): /translation/{lang}
+    soll bei kaputter Translation-Datei 422 liefern, nicht 500. Frontend
+    kann dann einen Fehler-State rendern."""
+    from fastapi.testclient import TestClient
+    import json as _json
+
+    idir = tmp_path / "steam" / "1141975_passage5"
+    idir.mkdir(parents=True)
+    (idir / "meta.json").write_text(
+        _json.dumps({
+            "platform": "steam",
+            "item_id": "1141975",
+            "name": "Passage 5",
+            "active_languages": ["english"],
+            "early_access": False,
+            "schema_version": 1,
+            "master_lang": "german",
+        }),
+        encoding="utf-8",
+    )
+    (idir / "translations").mkdir(parents=True, exist_ok=True)
+    # Kaputte UTF-8-Bytes
+    (idir / "translations" / "english.json").write_bytes(b'{"\xff\xfe": "BROKEN"}')
+
+    client = TestClient(app_with_data.app)
+    resp = client.get("/api/items/steam/1141975/translation/english")
+    assert resp.status_code == 422
+    assert "english" in resp.json()["detail"].lower() or "translation" in resp.json()["detail"].lower()
+
+
 def test_get_item_returns_422_on_master_with_invalid_utf8(app_with_data, tmp_path: Path) -> None:
     """NT-549 Pass 6 (Lisbeth 15:54 MEDIUM FUNCTIONAL):
     master_*.json mit kaputten UTF-8-Bytes -> 422, nicht 500.

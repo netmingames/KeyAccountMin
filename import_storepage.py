@@ -116,15 +116,23 @@ def cmd_import(steam_json: Path, name: str | None, force: bool, data_root: Path,
     schema_skeleton: dict[str, str] = {f: "" for f in schema.all_fields(early_access=True)}
 
     master_file = storage.master_path(idir, "de")
-    # Nur non-empty Werte aus dem Steam-JSON werden in den Merge uebernommen.
-    # Steam liefert fuer fehlende/leere Felder einen leeren String — wuerden
-    # die mit-uebernommen, koennten sie kuratierte Master-Texte beim Re-Import
-    # ueberschreiben (Lisbeth NT-548 12:37, MEDIUM FUNCTIONAL).
+    # Default: nur non-empty Steam-Werte in den Merge — schuetzt kuratierte
+    # Master-Texte vor Default-Re-Imports, bei denen Steam fuer fehlende
+    # Felder leere Strings liefert (Lisbeth NT-548 12:37, MEDIUM FUNCTIONAL).
+    #
+    # --force aktiviert den expliziten Override-Modus: auch leere Steam-Werte
+    # werden uebernommen, sodass obsolete Felder (Steam-seitig geloescht)
+    # auch lokal geleert werden koennen (Lisbeth NT-548 12:51, MEDIUM
+    # FUNCTIONAL).
     new_master_nonempty = {f: v for f, v in new_master_fields.items() if v}
+    new_master_for_merge = new_master_fields if force else new_master_nonempty
     if master_file.exists() and not is_new:
         existing_master = schema.MasterDocument(**storage.read_json(master_file))
         conflicts = []
-        for field, new_val in new_master_nonempty.items():
+        # Konflikt-Erkennung: alter Wert truthy, neuer Wert davon abweichend.
+        # Im force-Modus zaehlen auch Empty-overrides als Konflikt, damit
+        # die Konflikt-Anzeige beim --force-Run das Geleert-Werden mitlistet.
+        for field, new_val in new_master_for_merge.items():
             old_val = existing_master.fields.get(field, "")
             if old_val and old_val != new_val:
                 conflicts.append((field, old_val, new_val))
@@ -138,16 +146,16 @@ def cmd_import(steam_json: Path, name: str | None, force: bool, data_root: Path,
             return 3
         if conflicts and force:
             print(f"--force aktiv: {len(conflicts)} Master-Felder werden ueberschrieben")
-        # Merge-Reihenfolge: Skelett (alle Schema-Felder leer) -> bestehende
-        # Werte -> neue NICHT-LEERE Werte aus JSON. So bleiben fehlende Felder,
-        # die das Schema kennt aber Steam nicht liefert, als leere Strings
-        # erhalten, ohne dass bestehende Master-Eintraege ueberschrieben werden.
+        # Merge-Reihenfolge: Skelett -> bestehende Werte -> Steam-Werte (siehe
+        # Default/Force-Auswahl oben). Im Default-Pfad bleiben kuratierte
+        # Texte fuer Felder erhalten, die Steam leer liefert; im Force-Pfad
+        # werden die Steam-Werte 1:1 uebernommen, inklusive empty-overrides.
         merged_master = dict(schema_skeleton)
         merged_master.update(existing_master.fields)
-        merged_master.update(new_master_nonempty)
+        merged_master.update(new_master_for_merge)
     else:
         merged_master = dict(schema_skeleton)
-        merged_master.update(new_master_nonempty)
+        merged_master.update(new_master_for_merge)
 
     master_doc = schema.MasterDocument(
         item_id=item_id,

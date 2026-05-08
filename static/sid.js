@@ -275,10 +275,13 @@ function bindInhaltHandlers(it) {
           body: JSON.stringify({ value }),
         }).then(r => r.json());
         if (!r.ok) throw new Error("save failed");
-        // Cache invalidieren — beim naechsten Render werden Translations neu geholt
+        // Cache invalidieren und Content neu rendern, damit Stale-Counts und
+        // Badges in den Translation-Summary-Karten aktuell sind. Ohne das
+        // bleiben alte Stale-Zahlen sichtbar bis zur naechsten Tab-Navigation.
         it.master.fields[field] = value;
         delete state.itemCache[state.currentItemKey];
         flashOk(e.target);
+        await renderContent();
       } catch (err) {
         alert("Master speichern fehlgeschlagen: " + err);
       }

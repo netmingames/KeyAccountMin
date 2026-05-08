@@ -51,21 +51,41 @@ def write_json_atomic(path: Path, data: dict[str, Any]) -> None:
         raise
 
 
+_SEGMENT_FORBIDDEN = {"", ".", ".."}
+
+
+def _validate_path_segment(value: str, name: str) -> None:
+    """Schuetzt vor Path-Traversal: kein ``..``, keine Separatoren, kein Null-Byte.
+
+    Why: ``platform`` und ``item_id`` kommen aus HTTP-Requests und werden zu
+    Verzeichnisnamen. Ohne Validierung kann ein Angreifer mit ``..`` oder
+    ``a/b`` aus ``data_root`` ausbrechen und beliebige Pfade beschreiben.
+    """
+    if not isinstance(value, str) or value in _SEGMENT_FORBIDDEN:
+        raise ValueError(f"Ungueltiger {name}: {value!r}")
+    if any(sep in value for sep in ("/", "\\", "\x00")) or ":" in value:
+        raise ValueError(f"Ungueltiger {name} (verbotene Zeichen): {value!r}")
+
+
 def item_dir(data_root: Path, platform: str, item_id: str, name: str | None = None) -> Path:
     """Pfad zum Item-Ordner: data/<platform>/<item_id>_<slug>/.
 
     Wenn name fehlt, wird der bestehende Ordner gesucht. Wenn keiner existiert
     und name gesetzt ist, wird ein neuer Ordner-Pfad zurueckgegeben (nicht
-    angelegt).
+    angelegt). Lookup-Pfade legen nichts an (kein mkdir auf Read-Pfad).
     """
+    _validate_path_segment(platform, "platform")
+    _validate_path_segment(item_id, "item_id")
     base = data_root / platform
-    base.mkdir(parents=True, exist_ok=True)
-    # Existierenden Ordner per Praefix finden
-    for d in base.iterdir():
-        if d.is_dir() and d.name.startswith(f"{item_id}_"):
-            return d
-    if name is None:
-        raise FileNotFoundError(f"Item {item_id} unter {base} nicht gefunden")
+    if not base.exists():
+        if name is None:
+            raise FileNotFoundError(f"Item {item_id} unter {base} nicht gefunden")
+    else:
+        for d in base.iterdir():
+            if d.is_dir() and d.name.startswith(f"{item_id}_"):
+                return d
+        if name is None:
+            raise FileNotFoundError(f"Item {item_id} unter {base} nicht gefunden")
     slug = _slugify(name)
     return base / f"{item_id}_{slug}"
 

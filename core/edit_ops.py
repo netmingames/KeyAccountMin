@@ -103,9 +103,9 @@ def update_translation_field(
         - source_hash = aktueller Master-Hash (in sync)
         - stale=False
     via_translation_engine=True (NT-549 Auto-Translate):
-        - manually_edited bleibt False
-        - source_hash = aktueller Master-Hash
-        - stale=False
+        - manuell editierte Felder werden NICHT ueberschrieben (skipped=True)
+        - sonst: manually_edited bleibt False, source_hash = aktueller Master-Hash,
+          stale=False
     """
     if not steam_codes.is_valid(lang):
         raise ValueError(f"Unbekannte Sprache: {lang}")
@@ -119,6 +119,14 @@ def update_translation_field(
         t = schema.TranslationDocument(item_id=meta.item_id, lang=lang, fields={})
 
     tf = t.fields.get(field) or schema.TranslationField()
+    if via_translation_engine and tf.manually_edited:
+        # Manuelle Edits sind heilig — Auto-Translate darf sie nicht ueberschreiben.
+        return {
+            "field": field,
+            "lang": lang,
+            "manually_edited": True,
+            "skipped": True,
+        }
     tf.value = new_value
     tf.source_hash = master_hash
     tf.stale = False
@@ -229,12 +237,13 @@ def create_item(
     """
     if not steam_codes.is_valid(master_lang):
         raise ValueError(f"Unbekannte Master-Sprache: {master_lang}")
-    base = data_root / platform
-    base.mkdir(parents=True, exist_ok=True)
-    # Konflikt-Pruefung
-    for d in base.iterdir():
-        if d.is_dir() and d.name.startswith(f"{item_id}_"):
-            raise FileExistsError(f"Item {item_id} existiert bereits: {d}")
+    # Konflikt-Pruefung via storage.item_dir (validiert platform/item_id und
+    # findet Existing per Praefix). FileNotFoundError = ok, neu anlegbar.
+    try:
+        existing = storage.item_dir(data_root, platform, item_id)
+        raise FileExistsError(f"Item {item_id} existiert bereits: {existing}")
+    except FileNotFoundError:
+        pass
 
     idir = storage.item_dir(data_root, platform, item_id, name)
     idir.mkdir(parents=True, exist_ok=True)

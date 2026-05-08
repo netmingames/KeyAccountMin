@@ -122,12 +122,20 @@ def api_get_item(platform: str, item_id: str) -> dict:
             status_code=500,
             detail=f"Master-Datei {master_file.name} fehlt im Item-Ordner",
         )
+    # Lisbeth NT-549 15:36 Pass 5: nicht nur ValidationError, sondern auch
+    # JSONDecodeError und OSError (z.B. korrupte Datei, I/O-Fehler) als
+    # 422 ueberfuehren — sonst bubbelt der Decode-Fehler als 500 raus.
     try:
         master = schema.MasterDocument(**storage.read_json(master_file))
     except ValidationError as e:
         raise HTTPException(
             status_code=422,
             detail=f"master_*.json fuer {item_id} hat ungueltiges Schema: {e.errors()}",
+        )
+    except (json.JSONDecodeError, OSError) as e:
+        raise HTTPException(
+            status_code=422,
+            detail=f"master_*.json fuer {item_id} unlesbar: {e}",
         )
 
     translations: dict[str, dict] = {}
@@ -139,9 +147,10 @@ def api_get_item(platform: str, item_id: str) -> dict:
             continue
         try:
             t = schema.TranslationDocument(**storage.read_json(tpath))
-        except ValidationError:
+        except (ValidationError, json.JSONDecodeError, OSError):
             # Korrupte Translation-Datei -> ueberspringen (kein 500 wegen einer
-            # einzelnen kaputten Sprache). Wird in der Liste einfach fehlen.
+            # einzelnen kaputten Sprache). Lisbeth NT-549 15:36 Pass 5: JSON-
+            # Decode/OS-Fehler genauso wie Pydantic-ValidationError schlucken.
             continue
         n_filled = sum(1 for f in t.fields.values() if f.value)
         n_stale = sum(1 for f in t.fields.values() if f.stale)

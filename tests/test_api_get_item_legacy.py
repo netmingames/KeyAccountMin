@@ -161,6 +161,90 @@ def test_get_item_returns_422_on_schema_invalid_meta(app_with_data, tmp_path: Pa
     assert "Schema" in resp.json()["detail"]
 
 
+def test_get_item_returns_422_on_corrupt_master_json(app_with_data, tmp_path: Path) -> None:
+    """NT-549 Pass 5 (Lisbeth 15:36 MEDIUM FUNCTIONAL):
+    Korrupte master_*.json (JSON-Syntax kaputt, nicht nur Schema-mismatch)
+    soll 422 sein, nicht 500."""
+    from fastapi.testclient import TestClient
+    import json as _json
+
+    idir = tmp_path / "steam" / "1141975_passage5"
+    idir.mkdir(parents=True)
+    (idir / "meta.json").write_text(
+        _json.dumps({
+            "platform": "steam",
+            "item_id": "1141975",
+            "name": "Passage 5",
+            "active_languages": ["english"],
+            "early_access": False,
+            "schema_version": 1,
+            "master_lang": "german",
+        }),
+        encoding="utf-8",
+    )
+    # JSON-syntax kaputt
+    (idir / "master_de.json").write_text("{ this is not json", encoding="utf-8")
+
+    client = TestClient(app_with_data.app)
+    resp = client.get("/api/items/steam/1141975")
+    assert resp.status_code == 422
+    assert "master" in resp.json()["detail"].lower()
+
+
+def test_get_item_skips_corrupt_translation_json(app_with_data, tmp_path: Path) -> None:
+    """NT-549 Pass 5 (Lisbeth 15:36 MEDIUM FUNCTIONAL):
+    Korrupte translations/<lang>.json darf nicht das ganze Item brechen.
+    Andere Sprachen muessen weiter geliefert werden."""
+    from fastapi.testclient import TestClient
+    import json as _json
+
+    idir = tmp_path / "steam" / "1141975_passage5"
+    idir.mkdir(parents=True)
+    (idir / "meta.json").write_text(
+        _json.dumps({
+            "platform": "steam",
+            "item_id": "1141975",
+            "name": "Passage 5",
+            "active_languages": ["english", "french"],
+            "early_access": False,
+            "schema_version": 1,
+            "master_lang": "german",
+        }),
+        encoding="utf-8",
+    )
+    (idir / "master_de.json").write_text(
+        _json.dumps({
+            "schema_version": 1,
+            "item_id": "1141975",
+            "lang": "german",
+            "fields": {"about": "DE about"},
+            "updated_at": "2026-05-08T16:00:00",
+        }),
+        encoding="utf-8",
+    )
+    (idir / "translations").mkdir(parents=True)
+    # english: valide
+    (idir / "translations" / "english.json").write_text(
+        _json.dumps({
+            "schema_version": 1,
+            "item_id": "1141975",
+            "lang": "english",
+            "fields": {"about": {"value": "EN about", "stale": False, "manually_edited": False}},
+            "updated_at": "2026-05-08T16:00:00",
+        }),
+        encoding="utf-8",
+    )
+    # french: kaputt
+    (idir / "translations" / "french.json").write_text("{ broken", encoding="utf-8")
+
+    client = TestClient(app_with_data.app)
+    resp = client.get("/api/items/steam/1141975")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert "english" in body["translations"]
+    assert "french" not in body["translations"]
+
+
 def test_translate_rejects_unknown_engine(app_with_data, tmp_path: Path) -> None:
     """NT-549 Pass 3: unbekannter engine-Wert -> 400 statt silent fallback."""
     from fastapi.testclient import TestClient

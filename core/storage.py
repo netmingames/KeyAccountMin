@@ -74,28 +74,41 @@ def item_dir(data_root: Path, platform: str, item_id: str, name: str | None = No
     und name gesetzt ist, wird ein neuer Ordner-Pfad zurueckgegeben (nicht
     angelegt). Lookup-Pfade legen nichts an (kein mkdir auf Read-Pfad).
 
-    Match-Strategie: exakter Vergleich mit ``meta.item_id``. Praefix-Match
-    ueber den Verzeichnisnamen (``startswith(item_id + "_")``) reicht nicht
-    aus — bei item_ids, die einander als Praefix enthalten ("1" vs "1_2"),
-    matched ein Lookup auf "1" sonst faelschlich auch "1_2_..."-Ordner.
+    Match-Strategie:
+    1. Primaer: exakter Vergleich mit ``meta.item_id``. Praefix-Match ueber
+       den Verzeichnisnamen reicht nicht aus — bei item_ids, die einander
+       als Praefix enthalten ("1" vs "1_2"), matched ein Lookup auf "1"
+       sonst faelschlich auch "1_2_..."-Ordner.
+    2. Fallback (Lisbeth NT-548 13:02): wenn der Folder kein lesbares
+       ``meta.json`` hat (legacy / partially written) und sein Name mit
+       ``{item_id}_`` anfaengt, gilt er als Match. Verhindert dass ein
+       Re-Import per ``--name`` einen Duplicate-Folder neben dem
+       (defekten) Original anlegt.
     """
     _validate_path_segment(platform, "platform")
     _validate_path_segment(item_id, "item_id")
     base = data_root / platform
+    legacy_match: Path | None = None
     if base.exists():
         for d in base.iterdir():
             if not d.is_dir():
                 continue
             mp = d / "meta.json"
-            if not mp.exists():
-                continue
-            try:
-                with open(mp, encoding="utf-8") as f:
-                    meta = json.load(f)
-            except (json.JSONDecodeError, OSError):
-                continue
-            if meta.get("item_id") == item_id:
-                return d
+            meta_readable = False
+            if mp.exists():
+                try:
+                    with open(mp, encoding="utf-8") as f:
+                        meta = json.load(f)
+                    meta_readable = True
+                    if meta.get("item_id") == item_id:
+                        return d
+                    # meta lesbar mit anderer ID -> kein Fallback fuer diesen Folder
+                except (json.JSONDecodeError, OSError):
+                    pass
+            if not meta_readable and d.name.startswith(f"{item_id}_"):
+                legacy_match = d
+        if legacy_match is not None:
+            return legacy_match
     if name is None:
         raise FileNotFoundError(f"Item {item_id} unter {base} nicht gefunden")
     slug = _slugify(name)

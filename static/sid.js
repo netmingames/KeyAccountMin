@@ -324,14 +324,16 @@ function bindInhaltHandlers(it) {
 }
 
 async function loadAndRenderTargetLang(it, lang) {
+  const expectedItemKey = `${it.meta.platform}:${it.meta.item_id}`;
   const t = await fetch(`/api/items/${it.meta.platform}/${it.meta.item_id}/translation/${lang}`).then(r => r.json());
   if (t.detail) return; // 404
-  // Race-Schutz: state.currentTargetLang kann sich waehrend des fetch
-  // geaendert haben (User wechselt schnell die Sprache). Wenn die Antwort
-  // nicht mehr zur aktuellen Auswahl passt, abbrechen — sonst zeigt der
-  // Editor Inhalte einer anderen Sprache mit den passenden stale/manual
-  // Badges (Lisbeth NT-548 12:51, MEDIUM FUNCTIONAL).
+  // Race-Schutz: state.currentTargetLang ODER state.currentItemKey kann sich
+  // waehrend des fetch geaendert haben (User wechselt Sprache oder Item).
+  // Wenn die Antwort nicht mehr zur aktuellen Auswahl passt, abbrechen — sonst
+  // zeigt der Editor Inhalte einer anderen Sprache/eines anderen Items mit
+  // passenden stale/manual Badges (Lisbeth NT-548 13:02, MEDIUM FUNCTIONAL).
   if (state.currentTargetLang !== lang) return;
+  if (state.currentItemKey !== expectedItemKey) return;
   for (const row of document.querySelectorAll(".field-row")) {
     const field = row.dataset.field;
     const tf = t.fields[field];

@@ -56,13 +56,16 @@ def export_steam_loka(idir: Path) -> dict:
     meta = edit_ops.read_meta(idir)
     master = edit_ops.read_master(idir)
 
-    # Bestimme welche Standard-Felder ueberhaupt exportiert werden:
-    # nur die, fuer die mindestens irgendwo (Master oder Translation) ein
-    # non-empty Wert vorhanden ist. Das schafft strukturelle 1:1-Roundtrips
-    # bei Sample-Daten.
+    # Bestimme welche Standard-Felder exportiert werden.
+    # NT-550 Pass 3 (Lisbeth 15:50 MEDIUM FUNCTIONAL): leere Master-Felder
+    # werden EBENFALLS exportiert (mit ""), nicht weggelassen — das ist
+    # explizite Akzeptanz im Ticket. Vorher hat `master.fields.get(f)`
+    # bei "" falsy zurueckgegeben und das Feld komplett gedroppt.
+    # Logik jetzt: ein Standard-Feld kommt rein, wenn es im Master-Dict
+    # auftaucht (auch leer) ODER wenn irgendeine Translation Content hat.
     fields_to_export: set[str] = set()
     for f in schema.STEAM_FIELDS_STANDARD:
-        if master.fields.get(f):
+        if f in master.fields:
             fields_to_export.add(f)
 
     # Translation-Files cachen, damit wir sie nicht zweimal lesen.

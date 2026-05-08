@@ -117,6 +117,59 @@ def test_corrupt_translation_skipped_not_500(tmp_path: Path) -> None:
     assert any(v for v in data["languages"]["english"].values())
 
 
+def test_empty_master_field_exported_as_empty_string(tmp_path: Path) -> None:
+    """NT-550 Pass 3 (Lisbeth 15:50 MEDIUM FUNCTIONAL): Felder die im
+    Master als leerer String existieren werden trotzdem exportiert (""),
+    nicht weggelassen. Das ist explizite Akzeptanz im Ticket."""
+    from core import exporter
+
+    idir = tmp_path / "steam" / "555_test"
+    idir.mkdir(parents=True, exist_ok=True)
+    (idir / "meta.json").write_text(
+        json.dumps({
+            "platform": "steam",
+            "item_id": "555",
+            "name": "Test",
+            "active_languages": [],
+            "early_access": False,
+            "schema_version": 1,
+            "master_lang": "german",
+        }),
+        encoding="utf-8",
+    )
+    # Master mit "about" gefuellt UND "short_description" leer + sysreqs leer.
+    # Vor dem Fix wurden die leeren Felder weggelassen.
+    (idir / "master_de.json").write_text(
+        json.dumps({
+            "schema_version": 1,
+            "item_id": "555",
+            "lang": "german",
+            "fields": {
+                "about": "Filled",
+                "short_description": "",
+                "sysreqs_min_osversion": "",
+                "sysreqs_min_processor": "",
+            },
+            "updated_at": "2026-05-08T16:00:00",
+        }),
+        encoding="utf-8",
+    )
+
+    data = exporter.export_steam_loka(idir)
+    de_block = data["languages"]["german"]
+    # Alle 4 Master-Standard-Felder muessen im Output-Block sein
+    assert "app[content][about]" in de_block
+    assert "app[content][short_description]" in de_block
+    assert "app[content][sysreqs][windows][min][osversion]" in de_block
+    assert "app[content][sysreqs][windows][min][processor]" in de_block
+    assert de_block["app[content][about]"] == "Filled"
+    assert de_block["app[content][short_description]"] == ""
+    assert de_block["app[content][sysreqs][windows][min][osversion]"] == ""
+
+    # EA-Felder bleiben weg (Master kennt sie hier nicht), dito nicht-Master-Felder
+    assert "app[content][sysreqs][windows][min][memory]" not in de_block
+
+
 def test_export_to_file_strips_diagnose_fields(tmp_path: Path) -> None:
     """NT-550 Pass 2: skipped_translations ist ein Diagnose-Feld in der
     API-Response, darf aber nicht ins Steam-Upload-JSON. Steam erwartet

@@ -534,7 +534,7 @@ async function openExportModal(it) {
     const s = r.summary;
     document.getElementById("export-stats").innerHTML = `
       <table class="stats-table">
-        <tr><td>Item-ID</td><td><code>${s.item_id}</code></td></tr>
+        <tr><td>Item-ID</td><td><code>${escapeHtml(String(s.item_id))}</code></td></tr>
         <tr><td>Sprachen</td><td>${s.n_languages} (${s.n_languages_with_content} mit Inhalt)</td></tr>
         <tr><td>Felder pro Sprache</td><td>${s.n_fields_per_language}</td></tr>
         <tr><td>Gesamt-Zeichen</td><td>${s.total_chars.toLocaleString("de-DE")}</td></tr>

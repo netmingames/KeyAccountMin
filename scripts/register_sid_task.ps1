@@ -1,19 +1,20 @@
-# Registriert die Scheduled Task `AI_Mitarbeiter_KeyAccountMin`.
+# Registriert die Scheduled Task `Sid_KeyAccountMin`.
 # EINMALIG als Administrator ausfuehren (Rechtsklick -> "Mit PowerShell als Administrator ausfuehren").
 # Idempotent: vorhandene Task wird mit -Force ueberschrieben.
 #
 # Was die Task macht:
-# - Startet bei Bootup und bei User-Logon den Sid-Service (FastAPI, Port 5003)
-# - Restart bei Failure: 3x in 1-Min-Abstaenden
-# - Laeuft im User-Kontext (LogonType Interactive, RunLevel Limited)
+# - Startet bei Bootup den Sid-Service (FastAPI, Port 5003) — vor User-Logon, weil
+#   der Task unter dem ServiceAccount-Principal SYSTEM laeuft.
+# - Restart bei Failure: 3x in 1-Min-Abstaenden.
+# - LogonType ServiceAccount + AtStartup-Trigger ist die kanonische Kombination
+#   fuer "Boot-Service ohne User-Login" (NT-546 Lisbeth-Finding 2).
 
 $ErrorActionPreference = "Stop"
 
-$TaskName = "AI_Mitarbeiter_KeyAccountMin"
+$TaskName = "Sid_KeyAccountMin"
 $Python   = "C:\Users\netmin_m\AppData\Local\Programs\Python\Python312\python.exe"
 $App      = "D:\Claude\Serverin\KeyAccountMin\app.py"
 $Cwd      = "D:\Claude\Serverin\KeyAccountMin"
-$User     = "$env:USERDOMAIN\$env:USERNAME"
 
 if (-not (Test-Path $Python)) {
     Write-Error "Python nicht gefunden: $Python"
@@ -25,8 +26,7 @@ if (-not (Test-Path $App)) {
 }
 
 $action = New-ScheduledTaskAction -Execute $Python -Argument $App -WorkingDirectory $Cwd
-$trigger1 = New-ScheduledTaskTrigger -AtLogOn -User $User
-$trigger2 = New-ScheduledTaskTrigger -AtStartup
+$trigger = New-ScheduledTaskTrigger -AtStartup
 $settings = New-ScheduledTaskSettingsSet `
     -AllowStartIfOnBatteries `
     -DontStopIfGoingOnBatteries `
@@ -35,19 +35,26 @@ $settings = New-ScheduledTaskSettingsSet `
     -RestartInterval (New-TimeSpan -Minutes 1) `
     -ExecutionTimeLimit (New-TimeSpan -Seconds 0) `
     -MultipleInstances IgnoreNew
-$principal = New-ScheduledTaskPrincipal -UserId $User -LogonType Interactive -RunLevel Limited
+
+# ServiceAccount + SYSTEM = Boot-faehig, kein Login noetig. RunLevel Highest, weil
+# Sid Port 5003 bindet und ggf. Scheduled-Task-Kontrollrechte braucht
+# (Watchdog-Restart per Start-ScheduledTask).
+$principal = New-ScheduledTaskPrincipal `
+    -UserId "SYSTEM" `
+    -LogonType ServiceAccount `
+    -RunLevel Highest
 
 Register-ScheduledTask `
     -TaskName $TaskName `
     -Action $action `
-    -Trigger @($trigger1, $trigger2) `
+    -Trigger $trigger `
     -Settings $settings `
     -Principal $principal `
     -Description "Sid / KeyAccountMin Service (Port 5003) - Listings und Lokalisierung Werkbank" `
     -Force | Out-Null
 
-Write-Host "OK — Task '$TaskName' registriert."
-Write-Host "Sid wird beim naechsten Login bzw. Reboot automatisch starten."
+Write-Host ("OK - Task " + $TaskName + " registriert.")
+Write-Host "Sid wird beim naechsten Reboot automatisch starten (auch ohne User-Login)."
 Write-Host ""
 Write-Host "Sofortstart (manuell):"
-Write-Host "  Start-ScheduledTask -TaskName '$TaskName'"
+Write-Host ("  Start-ScheduledTask -TaskName " + $TaskName)

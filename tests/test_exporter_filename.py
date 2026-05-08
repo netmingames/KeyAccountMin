@@ -117,6 +117,35 @@ def test_corrupt_translation_skipped_not_500(tmp_path: Path) -> None:
     assert any(v for v in data["languages"]["english"].values())
 
 
+def test_export_skips_translation_with_invalid_utf8(tmp_path: Path) -> None:
+    """NT-549 Pass 6 (Lisbeth 15:54 MEDIUM FUNCTIONAL):
+    Eine Translation-Datei mit kaputten UTF-8-Bytes darf den Export nicht
+    killen. Sprache wird in skipped_translations gemeldet."""
+    from core import exporter
+
+    idir = tmp_path / "steam" / "555_test"
+    _seed_minimal_item(idir)
+
+    (idir / "translations").mkdir(parents=True, exist_ok=True)
+    # Valide english
+    (idir / "translations" / "english.json").write_text(
+        json.dumps({
+            "schema_version": 1,
+            "item_id": "555",
+            "lang": "english",
+            "fields": {"about": {"value": "EN", "stale": False, "manually_edited": False}},
+            "updated_at": "2026-05-08T16:00:00",
+        }),
+        encoding="utf-8",
+    )
+    # Kaputte UTF-8-Bytes in french
+    (idir / "translations" / "french.json").write_bytes(b'{"\xff\xfe\xff": "X"}')
+
+    data = exporter.export_steam_loka(idir)
+    assert "french" in data["skipped_translations"]
+    assert "english" not in data["skipped_translations"]
+
+
 def test_empty_master_field_exported_as_empty_string(tmp_path: Path) -> None:
     """NT-550 Pass 3 (Lisbeth 15:50 MEDIUM FUNCTIONAL): Felder die im
     Master als leerer String existieren werden trotzdem exportiert (""),

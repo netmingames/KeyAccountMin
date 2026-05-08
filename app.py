@@ -125,6 +125,9 @@ def api_get_item(platform: str, item_id: str) -> dict:
     # Lisbeth NT-549 15:36 Pass 5: nicht nur ValidationError, sondern auch
     # JSONDecodeError und OSError (z.B. korrupte Datei, I/O-Fehler) als
     # 422 ueberfuehren — sonst bubbelt der Decode-Fehler als 500 raus.
+    # Lisbeth NT-549 15:54 Pass 6: zusaetzlich UnicodeDecodeError schlucken
+    # — kaputte UTF-8-Sequenzen in master_*.json sollen ebenfalls als
+    # controlled 422 erscheinen, nicht als 500.
     try:
         master = schema.MasterDocument(**storage.read_json(master_file))
     except ValidationError as e:
@@ -132,7 +135,7 @@ def api_get_item(platform: str, item_id: str) -> dict:
             status_code=422,
             detail=f"master_*.json fuer {item_id} hat ungueltiges Schema: {e.errors()}",
         )
-    except (json.JSONDecodeError, OSError) as e:
+    except (json.JSONDecodeError, OSError, UnicodeDecodeError) as e:
         raise HTTPException(
             status_code=422,
             detail=f"master_*.json fuer {item_id} unlesbar: {e}",
@@ -147,10 +150,12 @@ def api_get_item(platform: str, item_id: str) -> dict:
             continue
         try:
             t = schema.TranslationDocument(**storage.read_json(tpath))
-        except (ValidationError, json.JSONDecodeError, OSError):
+        except (ValidationError, json.JSONDecodeError, OSError, UnicodeDecodeError):
             # Korrupte Translation-Datei -> ueberspringen (kein 500 wegen einer
             # einzelnen kaputten Sprache). Lisbeth NT-549 15:36 Pass 5: JSON-
             # Decode/OS-Fehler genauso wie Pydantic-ValidationError schlucken.
+            # Pass 6 (15:54): zusaetzlich UnicodeDecodeError fangen — kaputte
+            # UTF-8-Sequenzen sollen die Sprache skippen, nicht das Item killen.
             continue
         n_filled = sum(1 for f in t.fields.values() if f.value)
         n_stale = sum(1 for f in t.fields.values() if f.stale)
@@ -273,7 +278,10 @@ def _resolve_idir_with_meta(platform: str, item_id: str) -> Path:
         )
     try:
         meta_raw = storage.read_json(meta_file)
-    except (json.JSONDecodeError, OSError) as e:
+    except (json.JSONDecodeError, OSError, UnicodeDecodeError) as e:
+        # Lisbeth NT-549 15:54 Pass 6: zusaetzlich UnicodeDecodeError fangen
+        # — kaputte UTF-8-Bytes in meta.json sollen ebenfalls als 404 ueber-
+        # fuehrt werden, nicht als 500 bubbeln.
         raise HTTPException(
             status_code=404,
             detail=f"Item {item_id} unter {platform}: meta.json unlesbar ({e})",

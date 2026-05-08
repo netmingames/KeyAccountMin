@@ -441,7 +441,41 @@ async function loadAndRenderTargetLang(it, lang) {
 async function openLanguagesModal() {
   if (!state.currentItemKey) { alert("Erst ein Item waehlen oder anlegen."); return; }
   const [platform, itemId] = state.currentItemKey.split(":");
-  const it = state.itemCache[state.currentItemKey] || await fetch(`/api/items/${platform}/${itemId}`).then(r => r.json());
+  // Lisbeth NT-549 15:54 Pass 6 (LOW FUNCTIONAL): Mit der neuen 422/404-Logik
+  // bei kaputter meta.json kommt eine Fehler-Payload {detail: "..."} statt
+  // {meta: {...}} zurueck. Vorher hat openLanguagesModal blind it.meta
+  // dereferenziert und ist gecrasht. Jetzt: Status pruefen und controlled
+  // Error-Modal rendern statt zu crashen.
+  let it = state.itemCache[state.currentItemKey];
+  if (!it || !it.meta) {
+    const resp = await fetch(`/api/items/${platform}/${itemId}`);
+    if (!resp.ok) {
+      let detail = `HTTP ${resp.status}`;
+      try { const body = await resp.json(); if (body && body.detail) detail = body.detail; } catch (_) {}
+      showModal(`
+        <h2>Sprachen-Modal nicht verfuegbar</h2>
+        <p>Das Item kann nicht geladen werden:</p>
+        <pre class="error-detail">${escapeHtml(String(detail))}</pre>
+        <div class="modal-actions">
+          <button class="btn" id="btn-cancel-langs-err">Schliessen</button>
+        </div>
+      `);
+      document.getElementById("btn-cancel-langs-err").addEventListener("click", closeModal);
+      return;
+    }
+    it = await resp.json();
+  }
+  if (!it || !it.meta) {
+    showModal(`
+      <h2>Sprachen-Modal nicht verfuegbar</h2>
+      <p>Das Item liefert keine Metadaten zurueck.</p>
+      <div class="modal-actions">
+        <button class="btn" id="btn-cancel-langs-err">Schliessen</button>
+      </div>
+    `);
+    document.getElementById("btn-cancel-langs-err").addEventListener("click", closeModal);
+    return;
+  }
   state.itemCache[state.currentItemKey] = it;
   const active = new Set(it.meta.active_languages);
   const masterLang = it.meta.master_lang;

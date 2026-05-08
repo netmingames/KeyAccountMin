@@ -161,6 +161,93 @@ def test_get_item_returns_422_on_schema_invalid_meta(app_with_data, tmp_path: Pa
     assert "Schema" in resp.json()["detail"]
 
 
+def test_get_item_returns_422_on_master_with_invalid_utf8(app_with_data, tmp_path: Path) -> None:
+    """NT-549 Pass 6 (Lisbeth 15:54 MEDIUM FUNCTIONAL):
+    master_*.json mit kaputten UTF-8-Bytes -> 422, nicht 500.
+    Die alte Logik catched nur ValidationError/JSONDecodeError/OSError —
+    UnicodeDecodeError aus json.load(open(..., encoding='utf-8')) ging
+    durch und produzierte 500."""
+    from fastapi.testclient import TestClient
+    import json as _json
+
+    idir = tmp_path / "steam" / "1141975_passage5"
+    idir.mkdir(parents=True)
+    (idir / "meta.json").write_text(
+        _json.dumps({
+            "platform": "steam",
+            "item_id": "1141975",
+            "name": "Passage 5",
+            "active_languages": ["english"],
+            "early_access": False,
+            "schema_version": 1,
+            "master_lang": "german",
+        }),
+        encoding="utf-8",
+    )
+    # Kaputte UTF-8-Bytes: 0xff ist in UTF-8 ungueltig als Start-Byte
+    (idir / "master_de.json").write_bytes(b'{"item_id":"1141975","fields":{"about":"\xff\xfeBROKEN"}}')
+
+    client = TestClient(app_with_data.app)
+    resp = client.get("/api/items/steam/1141975")
+    assert resp.status_code == 422
+    assert "master" in resp.json()["detail"].lower()
+
+
+def test_get_item_skips_translation_with_invalid_utf8(app_with_data, tmp_path: Path) -> None:
+    """NT-549 Pass 6 (Lisbeth 15:54 MEDIUM FUNCTIONAL):
+    translations/<lang>.json mit kaputten UTF-8-Bytes -> diese Sprache
+    wird uebersprungen, andere weiter geliefert (kein 500)."""
+    from fastapi.testclient import TestClient
+    import json as _json
+
+    idir = tmp_path / "steam" / "1141975_passage5"
+    idir.mkdir(parents=True)
+    (idir / "meta.json").write_text(
+        _json.dumps({
+            "platform": "steam",
+            "item_id": "1141975",
+            "name": "Passage 5",
+            "active_languages": ["english", "french"],
+            "early_access": False,
+            "schema_version": 1,
+            "master_lang": "german",
+        }),
+        encoding="utf-8",
+    )
+    (idir / "master_de.json").write_text(
+        _json.dumps({
+            "schema_version": 1,
+            "item_id": "1141975",
+            "lang": "german",
+            "fields": {"about": "OK"},
+            "updated_at": "2026-05-08T16:00:00",
+        }),
+        encoding="utf-8",
+    )
+    (idir / "translations").mkdir(parents=True, exist_ok=True)
+    # Valide englische Translation
+    (idir / "translations" / "english.json").write_text(
+        _json.dumps({
+            "schema_version": 1,
+            "item_id": "1141975",
+            "lang": "english",
+            "fields": {"about": {"value": "EN", "stale": False, "manually_edited": False}},
+            "updated_at": "2026-05-08T16:00:00",
+        }),
+        encoding="utf-8",
+    )
+    # Franzoesische Translation: kaputte UTF-8-Bytes
+    (idir / "translations" / "french.json").write_bytes(b'{"\xff\xfe\xff": "BROKEN"}')
+
+    client = TestClient(app_with_data.app)
+    resp = client.get("/api/items/steam/1141975")
+    assert resp.status_code == 200
+    body = resp.json()
+    # Englische Sprache durchgekommen, Franzoesisch wurde geskippt
+    assert "english" in body["translations"]
+    assert "french" not in body["translations"]
+
+
 def test_get_item_returns_422_on_corrupt_master_json(app_with_data, tmp_path: Path) -> None:
     """NT-549 Pass 5 (Lisbeth 15:36 MEDIUM FUNCTIONAL):
     Korrupte master_*.json (JSON-Syntax kaputt, nicht nur Schema-mismatch)

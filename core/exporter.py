@@ -82,7 +82,10 @@ def export_steam_loka(idir: Path) -> dict:
             continue
         try:
             t = schema.TranslationDocument(**storage.read_json(tpath))
-        except (ValidationError, json.JSONDecodeError, OSError):
+        except (ValidationError, json.JSONDecodeError, OSError, UnicodeDecodeError):
+            # Pass 6 (Lisbeth 15:54): zusaetzlich UnicodeDecodeError schlucken
+            # — kaputte UTF-8-Sequenzen in der Translation duerfen den ganzen
+            # Export nicht killen.
             skipped_translations.append(lang_code)
             continue
         translation_cache[lang_code] = t

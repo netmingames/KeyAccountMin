@@ -124,7 +124,45 @@ def test_resolve_claude_exe_falls_back_to_path(monkeypatch) -> None:
 def test_resolve_claude_exe_default_when_not_in_path(monkeypatch) -> None:
     monkeypatch.delenv("SID_CLAUDE_EXE", raising=False)
     monkeypatch.setattr("core.translator.shutil.which", lambda name: None)
+    # NT-549 Pass 4: Wildcard-Scan ist die 3. Stufe; fuer den Default-Test
+    # muss er ebenfalls leer zurueckkehren, damit wir auf den Marker fallen.
+    monkeypatch.setattr("core.translator._scan_claude_install_dirs", lambda: None)
     assert _resolve_claude_exe() == translator.CLAUDE_EXE_DEFAULT
+
+
+def test_resolve_claude_exe_uses_wildcard_scan(monkeypatch, tmp_path: Path) -> None:
+    """NT-549 Pass 4 (Lisbeth 15:10 MEDIUM FUNCTIONAL):
+    Wenn weder Env noch PATH greifen, scannt _resolve_claude_exe die
+    Claude-Code-Install-Ordner und nimmt die neueste Version.
+    """
+    monkeypatch.delenv("SID_CLAUDE_EXE", raising=False)
+    monkeypatch.setattr("core.translator.shutil.which", lambda name: None)
+
+    fake_root = tmp_path / "AppData" / "Roaming" / "Claude" / "claude-code"
+    (fake_root / "2.1.128").mkdir(parents=True)
+    (fake_root / "2.1.128" / "claude.exe").write_text("fake")
+    (fake_root / "2.2.0").mkdir(parents=True)
+    (fake_root / "2.2.0" / "claude.exe").write_text("fake-newer")
+
+    monkeypatch.setenv("USERPROFILE", str(tmp_path))
+    monkeypatch.delenv("APPDATA", raising=False)
+
+    resolved = _resolve_claude_exe()
+    # Lexikalisches Sortieren wackelt bei exotischen Versions-Spruengen, aber
+    # 2.2.0 > 2.1.128 als String.
+    assert resolved == str(fake_root / "2.2.0" / "claude.exe")
+
+
+def test_resolve_claude_exe_returns_marker_when_nothing_found(monkeypatch, tmp_path: Path) -> None:
+    """Wenn weder Env, PATH noch Wildcard-Scan greifen, kommt der leere
+    Marker-String zurueck — der ClaudeCliTranslator wirft daraus eine
+    TranslationError, statt mit FileNotFoundError zu sterben."""
+    monkeypatch.delenv("SID_CLAUDE_EXE", raising=False)
+    monkeypatch.setattr("core.translator.shutil.which", lambda name: None)
+    # USERPROFILE auf leeres Verzeichnis -> Scan findet nichts
+    monkeypatch.setenv("USERPROFILE", str(tmp_path))
+    monkeypatch.delenv("APPDATA", raising=False)
+    assert _resolve_claude_exe() == ""
 
 
 def test_translator_constructor_uses_resolver(monkeypatch) -> None:

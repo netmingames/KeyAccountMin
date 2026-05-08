@@ -180,6 +180,17 @@ def item_dir(data_root: Path, platform: str, item_id: str, name: str | None = No
             )
             if collision:
                 continue
+            # Filter (c3) NT-548 Pass 9 (Lisbeth 14:59):
+            # Auch ohne sichtbare Sibling-Kollision ist `<item_id>_<digits>...`
+            # ein starkes Indiz fuer eine compound-id (numerische ids sind die
+            # Norm bei Steam app ids). Lookup auf "1" mit alleinigem Folder
+            # "1_2_main" muss refuse-en, weil "1_2" plausibel die echte id ist.
+            # Heuristik: wenn die erste Suffix-Komponente rein numerisch ist,
+            # gehoert d wahrscheinlich zu einer laengeren id und nicht zu
+            # item_id. Alphabetische erste Komponenten (z.B. "777_my_game" mit
+            # Suffix "my_game") bleiben weiterhin akzeptiert.
+            if x_component.isdigit():
+                continue
         candidates.append(d)
     if len(candidates) == 1:
         return candidates[0]

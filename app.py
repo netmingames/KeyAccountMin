@@ -249,6 +249,11 @@ def _resolve_idir_with_meta(platform: str, item_id: str) -> Path:
     ``glossary.load``/``exporter.export``-Aufrufe alle in FileNotFoundError oder
     JSONDecodeError laufen — sichtbar als 500 Internal Server Error. Stattdessen
     hier kontrolliert auf 404 ueberfuehren.
+
+    Lisbeth NT-549 15:10 (MEDIUM FUNCTIONAL): zusaetzlich auch Pydantic-
+    Schema validieren. Sonst laufen translate/export/glossary in einen 500
+    durch read_meta(), wenn meta.json zwar JSON-decodierbar aber schema-
+    invalid ist. Schema-Fehler -> 422, konsistent mit api_get_item.
     """
     idir = _resolve_idir(platform, item_id)
     meta_file = storage.meta_path(idir)
@@ -258,12 +263,18 @@ def _resolve_idir_with_meta(platform: str, item_id: str) -> Path:
             detail=f"Item {item_id} unter {platform}: meta.json fehlt (Legacy-Ordner '{idir.name}' ohne Metadaten)",
         )
     try:
-        # Probe-Lesen: validiert JSON-Decodierbarkeit, ohne Inhalt zu nutzen.
-        storage.read_json(meta_file)
+        meta_raw = storage.read_json(meta_file)
     except (json.JSONDecodeError, OSError) as e:
         raise HTTPException(
             status_code=404,
             detail=f"Item {item_id} unter {platform}: meta.json unlesbar ({e})",
+        )
+    try:
+        schema.ItemMeta(**meta_raw)
+    except ValidationError as e:
+        raise HTTPException(
+            status_code=422,
+            detail=f"meta.json fuer {item_id} hat ungueltiges Schema: {e.errors()}",
         )
     return idir
 

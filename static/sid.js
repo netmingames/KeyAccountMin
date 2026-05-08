@@ -152,7 +152,24 @@ async function renderContent() {
   const [platform, itemId] = state.currentItemKey.split(":");
   let it = state.itemCache[state.currentItemKey];
   if (!it) {
-    it = await fetch(`/api/items/${platform}/${itemId}`).then(r => r.json());
+    // NT-549 Pass 4 (Lisbeth 15:10 LOW FUNCTIONAL): mit dem 422-Pfad fuer
+    // schema-invalide meta/master.json kann GET /api/items/... jetzt non-200
+    // sein. Vorher wurde response.ok ignoriert -> renderContent crasht beim
+    // it.meta-Zugriff. Jetzt: Fehlerstatus -> graceful Card mit Detail.
+    const r = await fetch(`/api/items/${platform}/${itemId}`);
+    if (!r.ok) {
+      let detail = `${r.status} ${r.statusText}`;
+      try {
+        const body = await r.json();
+        if (body && body.detail) detail = body.detail;
+      } catch (_) { /* nicht JSON */ }
+      main.innerHTML = `<div class="card">
+        <h2>Item ${escapeHtml(platform)}/${escapeHtml(itemId)} nicht ladbar</h2>
+        <p class="muted">${escapeHtml(String(detail))}</p>
+      </div>`;
+      return;
+    }
+    it = await r.json();
     state.itemCache[state.currentItemKey] = it;
   }
   // Aktive Sprachen ohne Master

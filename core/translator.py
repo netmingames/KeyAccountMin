@@ -26,12 +26,50 @@ from typing import Iterable, Protocol
 
 from . import edit_ops, glossary as glossary_mod, schema, steam_codes, storage
 
-# Bekannter Default-Install-Pfad fuer claude.exe — wird nur als allerletzter
-# Fallback genutzt. NT-549 Pass 2 (Lisbeth): nicht hardcoded auf eine Version
-# verlassen, sondern via Env-Var oder PATH suchen. Bei Claude-Updates (z.B.
-# 2.1.128 -> 2.2.0) waere ein hartkodierter Pfad sonst unauffindbar.
-CLAUDE_EXE_DEFAULT = r"C:\Users\netmin_m\AppData\Roaming\Claude\claude-code\2.1.128\claude.exe"
 DEFAULT_TIMEOUT = 120  # pro Prompt-Aufruf, in Sekunden
+
+# Marker-Wert fuer "nichts gefunden" — der ClaudeCliTranslator wirft beim
+# Subprocess-Aufruf eine klare TranslationError statt eines kryptischen
+# FileNotFoundError. Tests pruefen darauf.
+CLAUDE_EXE_DEFAULT = ""
+
+
+def _scan_claude_install_dirs() -> str | None:
+    """NT-549 Pass 4 (Lisbeth 15:10 MEDIUM FUNCTIONAL): Wildcard-Scan ueber
+    bekannte Claude-Code-Install-Ordner pro User-Profil.
+
+    Findet die jeweils neueste claude.exe unter
+    ``%USERPROFILE%\\AppData\\Roaming\\Claude\\claude-code\\<version>\\claude.exe``,
+    so dass ein Versions-Upgrade (z.B. 2.1.128 -> 2.2.0) keinen manuellen
+    Eingriff verlangt. Vergleichswerkzeug: lexikalische Sortierung der
+    Versionsordner — fuer 0/1/2-stellige Versions-Komponenten reicht das,
+    bei groesseren Spruengen ggf. spaeter ueber packaging.version.
+
+    Returns: Pfad zur neuesten claude.exe oder None wenn nichts gefunden.
+    """
+    candidate_roots: list[Path] = []
+    user_profile = os.environ.get("USERPROFILE", "").strip()
+    if user_profile:
+        candidate_roots.append(Path(user_profile) / "AppData" / "Roaming" / "Claude" / "claude-code")
+    appdata = os.environ.get("APPDATA", "").strip()
+    if appdata:
+        candidate_roots.append(Path(appdata) / "Claude" / "claude-code")
+    seen: set[Path] = set()
+    found: list[Path] = []
+    for root in candidate_roots:
+        if root in seen or not root.is_dir():
+            continue
+        seen.add(root)
+        for version_dir in sorted(root.iterdir(), reverse=True):
+            if not version_dir.is_dir():
+                continue
+            exe = version_dir / "claude.exe"
+            if exe.exists():
+                found.append(exe)
+                break  # erste (neueste) je root reicht
+    if not found:
+        return None
+    return str(found[0])
 
 
 def _resolve_claude_exe() -> str:
@@ -39,11 +77,13 @@ def _resolve_claude_exe() -> str:
 
     1. Env-Var ``SID_CLAUDE_EXE`` — explizite Override fuer Tests / non-default Installs.
     2. PATH-Lookup via ``shutil.which`` — akzeptiert ``claude``, ``claude.exe``, ``claude.cmd``.
-    3. ``CLAUDE_EXE_DEFAULT`` — bekannter Default-Pfad als letzter Fallback.
+    3. Wildcard-Scan ueber bekannte Install-Ordner — robust gegen Versionswechsel.
+    4. Leerer String — der Aufrufer muss dann eine TranslationError werfen.
 
     Lisbeth NT-549 (MEDIUM FUNCTIONAL): vorher war der Pfad hartkodiert auf
     `2.1.128` und ein User-Profil — jedes Claude-Update oder ein anderes
-    Profil hat den Real-Pfad zerschossen.
+    Profil hat den Real-Pfad zerschossen. Pass 4: hardcoded Fallback ist
+    weg, dafuer dynamischer Versions-Scan.
     """
     explicit = os.environ.get("SID_CLAUDE_EXE", "").strip()
     if explicit:
@@ -52,6 +92,9 @@ def _resolve_claude_exe() -> str:
         found = shutil.which(cand)
         if found:
             return found
+    scanned = _scan_claude_install_dirs()
+    if scanned:
+        return scanned
     return CLAUDE_EXE_DEFAULT
 
 
@@ -318,12 +361,15 @@ def translate_item_lang(
     else:
         existing_t = schema.TranslationDocument(item_id=meta.item_id, lang=lang, fields={})
 
-    field_filter = set(fields) if fields else None
+    # NT-548 Pass 9 (Lisbeth 14:59 LOW FUNCTIONAL): fields=[] explizit
+    # vom None-Fall trennen, sonst bedeutet "leerer Filter" faelschlich
+    # "alle Felder uebersetzen" statt "keine Felder".
+    field_filter = set(fields) if fields is not None else None
 
     candidates: dict[str, str] = {}
     skipped: list[str] = []
     for f, value in master.fields.items():
-        if field_filter and f not in field_filter:
+        if field_filter is not None and f not in field_filter:
             continue
         if not value:
             continue

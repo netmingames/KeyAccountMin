@@ -144,3 +144,18 @@ def test_pass8_collision_with_sibling_longer_prefix_refuses(tmp_path: Path) -> N
     other.mkdir(parents=True)
     with pytest.raises(FileNotFoundError):
         item_dir(tmp_path, "steam", "1")
+
+
+def test_pass9_lone_compound_slug_with_numeric_subid_refuses(tmp_path: Path) -> None:
+    """Pass 9 (Lisbeth NT-548 14:59): einzelner unreadable Folder "1_2_main"
+    fuer Lookup "1" — auch ohne kollidierenden Sibling — muss refuse-en.
+
+    Begruendung: erste Suffix-Komponente "2" ist rein numerisch und damit
+    plausibel Teil einer laengeren id "1_2". Bei numerischen ids (Steam
+    app ids) ist das die Norm.
+    """
+    main = tmp_path / "steam" / "1_2_main"
+    main.mkdir(parents=True)
+    # kein meta.json, keine anderen Folder
+    with pytest.raises(FileNotFoundError):
+        item_dir(tmp_path, "steam", "1")

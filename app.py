@@ -220,6 +220,8 @@ def _resolve_idir(platform: str, item_id: str) -> Path:
         return storage.item_dir(DATA_ROOT, platform, item_id)
     except FileNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @app.put("/api/items/{platform}/{item_id}/master/{field}")

@@ -73,19 +73,31 @@ def item_dir(data_root: Path, platform: str, item_id: str, name: str | None = No
     Wenn name fehlt, wird der bestehende Ordner gesucht. Wenn keiner existiert
     und name gesetzt ist, wird ein neuer Ordner-Pfad zurueckgegeben (nicht
     angelegt). Lookup-Pfade legen nichts an (kein mkdir auf Read-Pfad).
+
+    Match-Strategie: exakter Vergleich mit ``meta.item_id``. Praefix-Match
+    ueber den Verzeichnisnamen (``startswith(item_id + "_")``) reicht nicht
+    aus — bei item_ids, die einander als Praefix enthalten ("1" vs "1_2"),
+    matched ein Lookup auf "1" sonst faelschlich auch "1_2_..."-Ordner.
     """
     _validate_path_segment(platform, "platform")
     _validate_path_segment(item_id, "item_id")
     base = data_root / platform
-    if not base.exists():
-        if name is None:
-            raise FileNotFoundError(f"Item {item_id} unter {base} nicht gefunden")
-    else:
+    if base.exists():
         for d in base.iterdir():
-            if d.is_dir() and d.name.startswith(f"{item_id}_"):
+            if not d.is_dir():
+                continue
+            mp = d / "meta.json"
+            if not mp.exists():
+                continue
+            try:
+                with open(mp, encoding="utf-8") as f:
+                    meta = json.load(f)
+            except (json.JSONDecodeError, OSError):
+                continue
+            if meta.get("item_id") == item_id:
                 return d
-        if name is None:
-            raise FileNotFoundError(f"Item {item_id} unter {base} nicht gefunden")
+    if name is None:
+        raise FileNotFoundError(f"Item {item_id} unter {base} nicht gefunden")
     slug = _slugify(name)
     return base / f"{item_id}_{slug}"
 

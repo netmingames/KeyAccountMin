@@ -78,19 +78,26 @@ def update_master_field(idir: Path, field: str, new_value: str) -> dict:
     meta = read_meta(idir)
     affected_stale = 0
     affected_manual = 0
+    # Performance (NT-558 follow-up): pro Translation-Datei NUR schreiben, wenn
+    # sich tatsaechlich etwas am stale-Flag geaendert hat. Vorher wurde jede
+    # der 28 Translation-Dateien rewritten (atomic-write + os.replace), was
+    # den HTTP-Roundtrip auf ~9s gebracht hat — Frontend-Timeout, "JSON.parse
+    # error" durch HTML-Error-Page. Jetzt: read+check, write nur wenn stale-
+    # Wert kippt.
     for lang in _existing_translation_langs(idir):
         if lang == meta.master_lang:
             continue
         t = read_translation(idir, lang)
-        if field in t.fields:
-            tf = t.fields[field]
-            new_stale = (new_hash != tf.source_hash)
-            if tf.stale != new_stale:
-                tf.stale = new_stale
-                if new_stale:
-                    affected_stale += 1
-            if tf.manually_edited:
-                affected_manual += 1
+        if field not in t.fields:
+            continue
+        tf = t.fields[field]
+        new_stale = (new_hash != tf.source_hash)
+        if tf.manually_edited:
+            affected_manual += 1
+        if tf.stale != new_stale:
+            tf.stale = new_stale
+            if new_stale:
+                affected_stale += 1
             write_translation(idir, t)
     return {
         "field": field,

@@ -355,11 +355,18 @@ function bindInhaltHandlers(it) {
       const oldValue = it.master.fields[field] ?? "";
       if (value === oldValue) return;
       try {
-        const r = await fetch(`/api/items/${it.meta.platform}/${it.meta.item_id}/master/${field}`, {
+        const resp = await fetch(`/api/items/${it.meta.platform}/${it.meta.item_id}/master/${field}`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ value }),
-        }).then(r => r.json());
+        });
+        if (!resp.ok) {
+          // Server hat 4xx/5xx geliefert — Body koennte JSON oder HTML sein.
+          let detail = `${resp.status} ${resp.statusText}`;
+          try { const body = await resp.json(); if (body?.detail) detail = body.detail; } catch (_) {}
+          throw new Error(detail);
+        }
+        const r = await resp.json();
         if (!r.ok) throw new Error("save failed");
         // Cache invalidieren und Content neu rendern, damit Stale-Counts und
         // Badges in den Translation-Summary-Karten aktuell sind. Ohne das
@@ -369,7 +376,7 @@ function bindInhaltHandlers(it) {
         flashOk(e.target);
         await renderContent();
       } catch (err) {
-        alert("Master speichern fehlgeschlagen: " + err);
+        showToast(`Master speichern fehlgeschlagen: ${err}`, "error");
       }
     });
   }

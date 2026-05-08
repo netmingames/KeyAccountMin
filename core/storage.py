@@ -81,34 +81,66 @@ def item_dir(data_root: Path, platform: str, item_id: str, name: str | None = No
        sonst faelschlich auch "1_2_..."-Ordner.
     2. Fallback (Lisbeth NT-548 13:02): wenn der Folder kein lesbares
        ``meta.json`` hat (legacy / partially written) und sein Name mit
-       ``{item_id}_`` anfaengt, gilt er als Match. Verhindert dass ein
-       Re-Import per ``--name`` einen Duplicate-Folder neben dem
-       (defekten) Original anlegt.
+       ``{item_id}_`` anfaengt, gilt er als Match — aber NUR wenn
+       eindeutig. Bei Praefix-Kollision (Lisbeth NT-548 Pass 6, MEDIUM
+       FUNCTIONAL) wird der Fallback verworfen, sonst koennte ein Lookup
+       auf item_id "1" einen Folder "1_2_xyz" treffen, der eigentlich
+       zu item_id "1_2" gehoert.
     """
     _validate_path_segment(platform, "platform")
     _validate_path_segment(item_id, "item_id")
     base = data_root / platform
-    legacy_match: Path | None = None
-    if base.exists():
-        for d in base.iterdir():
-            if not d.is_dir():
+    if not base.exists():
+        if name is None:
+            raise FileNotFoundError(f"Item {item_id} unter {base} nicht gefunden")
+        slug = _slugify(name)
+        return base / f"{item_id}_{slug}"
+
+    # Pass 1: alle Folder klassifizieren. Direkter Match per meta.item_id
+    # gewinnt sofort. Andere readable item_ids merken (fuer Ambiguity-Check).
+    other_meta_ids: set[str] = set()
+    unreadable: list[Path] = []
+    for d in base.iterdir():
+        if not d.is_dir():
+            continue
+        mp = d / "meta.json"
+        if mp.exists():
+            try:
+                with open(mp, encoding="utf-8") as f:
+                    meta = json.load(f)
+                mid = meta.get("item_id")
+                if mid == item_id:
+                    return d
+                if isinstance(mid, str):
+                    other_meta_ids.add(mid)
                 continue
-            mp = d / "meta.json"
-            meta_readable = False
-            if mp.exists():
-                try:
-                    with open(mp, encoding="utf-8") as f:
-                        meta = json.load(f)
-                    meta_readable = True
-                    if meta.get("item_id") == item_id:
-                        return d
-                    # meta lesbar mit anderer ID -> kein Fallback fuer diesen Folder
-                except (json.JSONDecodeError, OSError):
-                    pass
-            if not meta_readable and d.name.startswith(f"{item_id}_"):
-                legacy_match = d
-        if legacy_match is not None:
-            return legacy_match
+            except (json.JSONDecodeError, OSError):
+                pass
+        unreadable.append(d)
+
+    # Pass 2: Legacy-Fallback nur bei Eindeutigkeit. Drei Filter:
+    #   a) Folder-Name muss mit "{item_id}_" anfangen.
+    #   b) Folder darf nicht zu einem laengeren bekannten item_id passen
+    #      ("1_2_xyz" gehoert zu "1_2", nicht zu "1").
+    #   c) Es darf nur EINEN Kandidaten geben — bei mehreren ist die
+    #      Zuordnung ohne meta.json nicht entscheidbar.
+    marker = f"{item_id}_"
+    candidates: list[Path] = []
+    for d in unreadable:
+        if not d.name.startswith(marker):
+            continue
+        ambiguous = any(
+            other_id != item_id
+            and len(other_id) > len(item_id)
+            and d.name.startswith(f"{other_id}_")
+            for other_id in other_meta_ids
+        )
+        if ambiguous:
+            continue
+        candidates.append(d)
+    if len(candidates) == 1:
+        return candidates[0]
+
     if name is None:
         raise FileNotFoundError(f"Item {item_id} unter {base} nicht gefunden")
     slug = _slugify(name)

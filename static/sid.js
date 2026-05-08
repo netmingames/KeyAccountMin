@@ -13,6 +13,12 @@ const state = {
   currentTargetLang: null,
   // pro Item gecached: meta + master + translations-Summary + voll-translation-bei-Bedarf
   itemCache: {},
+  // Request-Token pro Item/Sprach-Kombination (Lisbeth NT-548 Pass 6,
+  // MEDIUM FUNCTIONAL): jeder loadAndRenderTargetLang-Aufruf zaehlt hoch,
+  // nur die Antwort mit dem aktuellsten Token darf rendern. Sonst kann eine
+  // langsamere Vorgaenger-Antwort (z.B. die Pre-Save-Anfrage) eine spaetere
+  // schon gespeicherte Anzeige ueberschreiben.
+  langRenderTokens: {},
 };
 
 // Plattformen — heute nur Steam aktiv. Top-Level-Tabs sind hardcoded;
@@ -117,7 +123,9 @@ function renderSubTabs() {
     const hint = t.hint ? ` <span class="muted">(${t.hint})</span>` : "";
     return `<button class="${cls.join(" ")}" data-sub="${t.code}" ${t.active ? "" : "disabled"}>${t.label}${hint}</button>`;
   }).join("");
-  nav.innerHTML = buttons + `<button class="tab" id="btn-langs" title="Aktive Sprachen verwalten">🌐 Sprachen</button>`;
+  nav.innerHTML = buttons + `
+    <button class="tab" id="btn-langs" title="Aktive Sprachen verwalten">🌐 Sprachen</button>
+    <button class="tab" id="btn-glossary" title="Glossar fuer dieses Item">📖 Glossar</button>`;
   for (const b of nav.querySelectorAll("button[data-sub]")) {
     b.addEventListener("click", e => {
       const s = e.currentTarget.dataset.sub;
@@ -127,6 +135,7 @@ function renderSubTabs() {
     });
   }
   document.getElementById("btn-langs").addEventListener("click", () => openLanguagesModal());
+  document.getElementById("btn-glossary").addEventListener("click", () => openGlossaryModal());
 }
 
 // --- Content (Inhalt-Tab) ----------------------------------------------------
@@ -173,7 +182,8 @@ function renderInhalt(it, targetLangs) {
 
   const targetHeader = targetLangs.length === 0
     ? `<span class="muted">Keine Zielsprache aktiv. <button class="link" id="btn-langs-inline">Sprachen aktivieren</button></span>`
-    : `<label>Zielsprache: <select id="select-target-lang">${targetOptions}</select></label>`;
+    : `<label>Zielsprache: <select id="select-target-lang">${targetOptions}</select></label>
+       <button class="btn small" id="btn-translate" title="Auto-uebersetze diese Sprache via Claude CLI">⚡ Auto-uebersetzen</button>`;
 
   const eaToggle = `
     <label class="checkbox-line">
@@ -261,6 +271,37 @@ function bindInhaltHandlers(it) {
   const langsInline = document.getElementById("btn-langs-inline");
   if (langsInline) langsInline.addEventListener("click", () => openLanguagesModal());
 
+  const trBtn = document.getElementById("btn-translate");
+  if (trBtn) trBtn.addEventListener("click", async () => {
+    if (!state.currentTargetLang) return;
+    const orig = trBtn.innerHTML;
+    trBtn.disabled = true;
+    trBtn.innerHTML = '<span class="spinner"></span> uebersetze ...';
+    try {
+      const r = await fetch(`/api/items/${it.meta.platform}/${it.meta.item_id}/translate/${state.currentTargetLang}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      if (!r.ok) {
+        const detail = (await r.json()).detail || `HTTP ${r.status}`;
+        showToast(`Uebersetzen fehlgeschlagen: ${detail}`, "error");
+        return;
+      }
+      const data = await r.json();
+      const n = data.fields_translated.length;
+      const skipped = data.fields_skipped.length;
+      showToast(`${n} Felder uebersetzt (${data.engine}, ${data.duration_seconds}s)${skipped ? `, ${skipped} manuell editiert geschuetzt` : ""}`, "ok");
+      delete state.itemCache[state.currentItemKey];
+      await renderContent();
+    } catch (err) {
+      showToast(`Netzwerk-Fehler: ${err}`, "error");
+    } finally {
+      trBtn.disabled = false;
+      trBtn.innerHTML = orig;
+    }
+  });
+
   // Master-Editor: on-blur PUT
   for (const ed of document.querySelectorAll(".editor.master")) {
     ed.addEventListener("blur", async e => {
@@ -325,6 +366,14 @@ function bindInhaltHandlers(it) {
 
 async function loadAndRenderTargetLang(it, lang) {
   const expectedItemKey = `${it.meta.platform}:${it.meta.item_id}`;
+  // Race-Schutz Pass 6 (Lisbeth NT-548): zwei mehrfach-laufende Anfragen
+  // fuer DIESELBE Item/Sprach-Kombi koennten beide die State-Checks unten
+  // bestehen. Mit einem aufsteigenden Token pro Kombi rendert nur die
+  // letzte Anfrage. Eine langsamere Pre-Save-Antwort, die nach dem Save
+  // eintrifft, wird damit verworfen statt frische Werte zu ueberschreiben.
+  const tokenKey = `${expectedItemKey}|${lang}`;
+  const myToken = (state.langRenderTokens[tokenKey] || 0) + 1;
+  state.langRenderTokens[tokenKey] = myToken;
   const t = await fetch(`/api/items/${it.meta.platform}/${it.meta.item_id}/translation/${lang}`).then(r => r.json());
   if (t.detail) return; // 404
   // Race-Schutz: state.currentTargetLang ODER state.currentItemKey kann sich
@@ -334,6 +383,8 @@ async function loadAndRenderTargetLang(it, lang) {
   // passenden stale/manual Badges (Lisbeth NT-548 13:02, MEDIUM FUNCTIONAL).
   if (state.currentTargetLang !== lang) return;
   if (state.currentItemKey !== expectedItemKey) return;
+  // Innerhalb derselben Kombi: nur das neueste Fetch rendern.
+  if (state.langRenderTokens[tokenKey] !== myToken) return;
   for (const row of document.querySelectorAll(".field-row")) {
     const field = row.dataset.field;
     const tf = t.fields[field];
@@ -448,6 +499,93 @@ function openNewItemModal() {
     renderItemTabs();
     await renderContent();
   });
+}
+
+// --- Modal: Glossar ----------------------------------------------------------
+
+async function openGlossaryModal() {
+  if (!state.currentItemKey) { alert("Erst ein Item waehlen oder anlegen."); return; }
+  const [platform, itemId] = state.currentItemKey.split(":");
+  const g = await fetch(`/api/items/${platform}/${itemId}/glossary`).then(r => r.json());
+  const entries = g.entries || [];
+
+  const rowFor = e => `
+    <tr>
+      <td><input type="text" class="g-term" value="${escapeHtml(e.term || "")}" placeholder="Begriff (DE)"></td>
+      <td>
+        <select class="g-rule">
+          <option value="keep" ${(e.rule || "keep") === "keep" ? "selected" : ""}>woertlich (keep)</option>
+          <option value="translate" ${e.rule === "translate" ? "selected" : ""}>uebersetzen + Hinweis</option>
+        </select>
+      </td>
+      <td><input type="text" class="g-note" value="${escapeHtml(e.note || "")}" placeholder="Notiz fuer Translator"></td>
+      <td><button class="btn small del" title="Eintrag entfernen">×</button></td>
+    </tr>`;
+
+  showModal(`
+    <h2>Glossar — Plattform & Item-spezifisch</h2>
+    <p class="muted">Begriffe die woertlich uebernommen werden muessen (Spieltitel, Modus-Namen,
+    Markennamen) oder besondere Hinweise brauchen. Wird beim Auto-uebersetzen ans LLM angehaengt.</p>
+    <table class="glossary-table">
+      <thead><tr><th>Begriff</th><th>Regel</th><th>Notiz</th><th></th></tr></thead>
+      <tbody id="glossary-body">${entries.map(rowFor).join("")}</tbody>
+    </table>
+    <button class="btn" id="btn-add-glossary">+ Eintrag hinzufuegen</button>
+    <div class="modal-actions">
+      <button class="btn" id="btn-cancel-glossary">Abbrechen</button>
+      <button class="btn primary" id="btn-save-glossary">Speichern</button>
+    </div>
+  `);
+
+  function bindRow(row) {
+    row.querySelector(".del").addEventListener("click", () => row.remove());
+  }
+  for (const row of document.querySelectorAll("#glossary-body tr")) bindRow(row);
+  document.getElementById("btn-add-glossary").addEventListener("click", () => {
+    const tbody = document.getElementById("glossary-body");
+    const wrap = document.createElement("tbody");
+    wrap.innerHTML = rowFor({});
+    const tr = wrap.firstElementChild;
+    tbody.appendChild(tr);
+    bindRow(tr);
+    tr.querySelector(".g-term").focus();
+  });
+  document.getElementById("btn-cancel-glossary").addEventListener("click", closeModal);
+  document.getElementById("btn-save-glossary").addEventListener("click", async () => {
+    const newEntries = [];
+    for (const row of document.querySelectorAll("#glossary-body tr")) {
+      const term = row.querySelector(".g-term").value.trim();
+      if (!term) continue;
+      newEntries.push({
+        term,
+        rule: row.querySelector(".g-rule").value,
+        note: row.querySelector(".g-note").value.trim(),
+      });
+    }
+    const r = await fetch(`/api/items/${platform}/${itemId}/glossary`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ entries: newEntries }),
+    });
+    if (!r.ok) { showToast("Glossar speichern fehlgeschlagen: " + (await r.text()), "error"); return; }
+    closeModal();
+    showToast(`Glossar gespeichert (${newEntries.length} Eintraege)`, "ok");
+  });
+}
+
+// --- Toast-Helper ------------------------------------------------------------
+
+function showToast(msg, kind = "ok") {
+  let toast = document.getElementById("toast");
+  if (!toast) {
+    toast = document.createElement("div");
+    toast.id = "toast";
+    document.body.appendChild(toast);
+  }
+  toast.className = `toast ${kind} visible`;
+  toast.textContent = msg;
+  clearTimeout(toast._t);
+  toast._t = setTimeout(() => toast.classList.remove("visible"), kind === "error" ? 8000 : 4000);
 }
 
 // --- Modal-Helper ------------------------------------------------------------

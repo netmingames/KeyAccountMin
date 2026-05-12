@@ -66,6 +66,21 @@ def _values_for_lang(idir: Path, lang: str) -> tuple[dict[str, str], bool]:
     return {f: (t.fields.get(f).value if t.fields.get(f) else "") for f in schema.STEAM_FIELDS_EA}, False
 
 
+def _source_filename(meta, lang: str) -> str:
+    """Quelldatei-Name fuer eine Sprache (fuer Warn-Hinweise).
+
+    Master-Sprache liegt in `master_<iso-short>.json`, alle anderen Sprachen
+    in `translations/<lang>.json`. Lisbeth NT-551 Pass 11 (09:40 LOW
+    FUNCTIONAL): die Korruptions-Warnung war fuer beide Faelle hartkodiert
+    auf `translations/{lang}.json` — fuer den Master zeigte das auf die
+    falsche Datei und war damit irrefuehrend.
+    """
+    if lang == meta.master_lang:
+        iso_short = steam_codes.get(meta.master_lang).iso.split("-")[0]
+        return f"master_{iso_short}.json"
+    return f"translations/{lang}.json"
+
+
 def render_ea_text(idir: Path, lang: str) -> str:
     """Erzeugt den Plaintext-Block fuer eine Sprache.
 
@@ -82,7 +97,7 @@ def render_ea_text(idir: Path, lang: str) -> str:
     lines.append(f"# {meta.name} — Early Access Q&A — {lang_obj.display}")
     if corrupt:
         lines.append(
-            f"# WARNUNG: translations/{lang}.json war unlesbar (kaputtes JSON/UTF-8) "
+            f"# WARNUNG: {_source_filename(meta, lang)} war unlesbar (kaputtes JSON/UTF-8) "
             f"— Texte werden leer ausgegeben, bitte Quelldatei pruefen."
         )
     lines.append("")
@@ -144,12 +159,13 @@ def export_ea_bundle_zip(idir: Path) -> bytes:
             f"Copy/Paste vom Antwort-Block in das passende Feld in Steamworks.\n"
         )
         if skipped:
+            entries = [f"{lang} ({_source_filename(meta, lang)})" for lang in skipped]
             readme += (
                 f"\n"
-                f"WARNUNG: Bei folgenden Sprachen war translations/<lang>.json\n"
-                f"unlesbar (kaputtes JSON/UTF-8); ihre .txt-Datei enthaelt nur\n"
-                f"Platzhalter. Bitte Quelldateien pruefen:\n"
-                f"  {', '.join(skipped)}\n"
+                f"WARNUNG: Bei folgenden Sprachen war die Quelldatei unlesbar\n"
+                f"(kaputtes JSON/UTF-8); ihre .txt-Datei enthaelt nur Platzhalter.\n"
+                f"Bitte Quelldateien pruefen:\n"
+                f"  {', '.join(entries)}\n"
             )
         zf.writestr("README.md", readme)
         for name, text in lang_texts:

@@ -18,7 +18,7 @@ from pathlib import Path
 
 import uvicorn
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, ValidationError
@@ -462,6 +462,76 @@ def api_translate_all(platform: str, item_id: str, body: _TranslateBody) -> dict
         "n_failed": len(target_langs) - n_ok,
         "results": results,
     }
+
+
+@app.get("/api/items/{platform}/{item_id}/translate-stream")
+def api_translate_stream(platform: str, item_id: str, engine: str | None = None) -> StreamingResponse:
+    """SSE-Stream fuer Bulk-Uebersetzung (Lisbeth NT-549 Pass 9 MEDIUM FUNCTIONAL).
+
+    Liefert pro Zielsprache zwei Events: ``lang_start`` (vor dem Claude-CLI-
+    Aufruf) und ``lang_done`` (nach Erfolg/Fehler), plus ein abschliessendes
+    ``done``-Event. Damit sieht das Frontend live wann jede Sprache anfaengt
+    und kann den Spinner pro Reihe sauber umschalten — kein UI-Hang mehr,
+    auch wenn ein einzelner Claude-Aufruf in den Timeout laeuft (lang_start
+    ist schon raus, der User sieht welche Sprache gerade haengt).
+
+    EventSource ist GET-only, daher Query-Parameter statt Body. Wir benutzen
+    die Default-Felder (alle uebersetzbaren Felder) — das ist die einzige
+    Variante die das Bulk-Translate-Modal anbietet.
+    """
+    idir = _resolve_idir_with_meta(platform, item_id)
+    meta = edit_ops.read_meta(idir)
+    target_langs = [l for l in meta.active_languages if l != meta.master_lang]
+
+    _VALID_ENGINES = {None, "mock", "claude", "claude-cli"}
+    if engine not in _VALID_ENGINES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unbekannte engine '{engine}'. Erlaubt: mock | claude | claude-cli | (leer = Default).",
+        )
+    if engine == "mock":
+        tx = translator.MockTranslator()
+    elif engine in ("claude", "claude-cli"):
+        tx = translator.ClaudeCliTranslator()
+    else:
+        tx = None
+
+    def _gen():
+        def _evt(name: str, data: dict) -> str:
+            return f"event: {name}\ndata: {json.dumps(data)}\n\n"
+
+        yield _evt("start", {"n_total": len(target_langs), "langs": target_langs})
+        n_ok = 0
+        n_failed = 0
+        for lang in target_langs:
+            yield _evt("lang_start", {"lang": lang})
+            entry: dict = {"lang": lang}
+            try:
+                r = translator.translate_item_lang(
+                    idir, lang, fields=None, translator=tx,
+                )
+                entry.update({
+                    "ok": True,
+                    "engine": r.engine,
+                    "duration_seconds": round(r.duration_seconds, 2),
+                    "fields_translated": list(r.fields_translated.keys()),
+                    "fields_skipped": r.fields_skipped,
+                })
+                n_ok += 1
+            except translator.TranslationError as e:
+                entry.update({"ok": False, "error": str(e)})
+                n_failed += 1
+            except ValueError as e:
+                entry.update({"ok": False, "error": str(e)})
+                n_failed += 1
+            yield _evt("lang_done", entry)
+        yield _evt("done", {"n_ok": n_ok, "n_failed": n_failed, "n_total": len(target_langs)})
+
+    headers = {
+        "Cache-Control": "no-cache",
+        "X-Accel-Buffering": "no",  # disable proxy buffering, falls vorgeschaltet
+    }
+    return StreamingResponse(_gen(), media_type="text/event-stream", headers=headers)
 
 
 @app.get("/api/items/{platform}/{item_id}/glossary")

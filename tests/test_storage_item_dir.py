@@ -210,3 +210,34 @@ def test_pass11_pass10_year_like_match_still_works(tmp_path: Path) -> None:
     p = tmp_path / "steam" / "777_2024_update"
     p.mkdir(parents=True)
     assert item_dir(tmp_path, "steam", "777") == p
+
+
+def test_pass12_two_digit_id_with_year_like_segment_refuses(tmp_path: Path) -> None:
+    """Pass 12 (Lisbeth NT-549 08:52 MEDIUM FUNCTIONAL): "12_2024_update"
+    mit Lookup "12" muss refuse-en — "12_2024" ist plausible compound id
+    und meta.json fehlt.
+
+    Heuristik (verschaerft Pass 11): numerischer x_component nur akzeptieren
+    wenn len(item_id) >= len(x_component) - 1. Hier: id=2, x=4 -> 2 < 3,
+    also refuse."""
+    p = tmp_path / "steam" / "12_2024_update"
+    p.mkdir(parents=True)
+    with pytest.raises(FileNotFoundError):
+        item_dir(tmp_path, "steam", "12")
+
+
+def test_pass12_long_id_with_short_numeric_segment_refuses(tmp_path: Path) -> None:
+    """Pass 12: lange item_id "1234567" mit "1234567_12_main" — "12"
+    ist 2-stellig (< 3), also refuse als Sub-id-Indikator."""
+    p = tmp_path / "steam" / "1234567_12_main"
+    p.mkdir(parents=True)
+    with pytest.raises(FileNotFoundError):
+        item_dir(tmp_path, "steam", "1234567")
+
+
+def test_pass12_appid_with_year_match_works(tmp_path: Path) -> None:
+    """Pass 12: typische Steam-AppID mit Jahres-Slug muss weiter matchen.
+    item_id "1141975" (7-stellig) mit "1141975_2024_dlc" -> id >> x, accept."""
+    p = tmp_path / "steam" / "1141975_2024_dlc"
+    p.mkdir(parents=True)
+    assert item_dir(tmp_path, "steam", "1141975") == p

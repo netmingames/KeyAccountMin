@@ -180,28 +180,31 @@ def item_dir(data_root: Path, platform: str, item_id: str, name: str | None = No
             )
             if collision:
                 continue
-            # Filter (c3) NT-549 Pass 7 (Lisbeth 16:12 MEDIUM FUNCTIONAL):
-            # Verfeinerung der Sub-id-Heuristik fuer numerische x_components.
-            # Verlauf:
-            #   Pass 9: alle numerischen x_components abgelehnt
-            #     -> blockiert "777_2024_update" lookup "777" (Lisbeth Pass 10).
-            #   Pass 10: nur <=3-stellige numerische x_components abgelehnt
-            #     -> laesst "1_2024_update" lookup "1" und "1_1234_main"
-            #        lookup "1" durch (Lisbeth Pass 11/16:12).
-            #   Pass 11 (jetzt): refuse, ausser BEIDE Bedingungen gelten:
-            #     a) len(x_component) >= 4 — Jahres-/Long-Slug-Indikator,
-            #     b) len(item_id)     >= 2 — kurze ids ("1") lassen jede
-            #        nicht-triviale x_component als compound id offen.
+            # Filter (c3) NT-549 Pass 9 (Lisbeth 08:52 MEDIUM FUNCTIONAL):
+            # Heuristik gegen numerische compound-ids (z.B. "12_2024_update"
+            # fuer item_id "12" — sieht wie compound-id "12_2024" aus).
+            # Akzeptiert wird ein numerisches x_component nur dann, wenn:
+            #   a) len(x_component) >= 3                — substantieller
+            #      Slug-Anteil (Jahr, Bundle-Nummer), kurze "_2_"-Muster
+            #      sind klassische Sub-id-Erweiterungen.
+            #   b) len(item_id) >= len(x_component) - 1 — item_id muss min.
+            #      annaehernd so lang sein wie der x_component. Kurze ids
+            #      gegen lange x_components ("12" vs. "2024") sehen wie eine
+            #      compound id aus, wo das eigentliche item_id der Verbund
+            #      "12_2024" ist.
             # Beispiele:
             #   "1_2_main"        lookup "1"   -> refuse (x=2, kurz)
-            #   "1_2024_update"   lookup "1"   -> refuse (item_id "1" zu kurz)
-            #   "1_1234_main"     lookup "1"   -> refuse (item_id "1" zu kurz)
-            #   "777_2024_update" lookup "777" -> accept (3-st. id + 4-st. x)
+            #   "1_2024_update"   lookup "1"   -> refuse (id=1 < x-1=3)
+            #   "1_1234_main"     lookup "1"   -> refuse (id=1 < x-1=3)
+            #   "12_2024_update"  lookup "12"  -> refuse (id=2 < x-1=3, Pass 9)
+            #   "777_2024_update" lookup "777" -> accept (id=3 == x-1=3)
+            #   "9999_2024"       lookup "9999"-> accept (id >= x)
             #   "42_1st_pass"     lookup "42"  -> accept (x nicht numerisch)
             # Ohne meta.json bleibt ein 100%-Verdict prinzipiell nicht moeglich;
             # die Heuristik bevorzugt im Zweifel das Refuse.
             if x_component.isdigit() and not (
-                len(x_component) >= 4 and len(item_id) >= 2
+                len(x_component) >= 3
+                and len(item_id) >= len(x_component) - 1
             ):
                 continue
         candidates.append(d)

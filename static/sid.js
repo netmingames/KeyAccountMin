@@ -642,48 +642,65 @@ async function openTranslateAllModal(it) {
   `);
 
   document.getElementById("btn-bt-cancel").addEventListener("click", closeModal);
-  document.getElementById("btn-bt-start").addEventListener("click", async () => {
+  document.getElementById("btn-bt-start").addEventListener("click", () => {
     const startBtn = document.getElementById("btn-bt-start");
     startBtn.disabled = true;
     startBtn.innerHTML = '<span class="spinner"></span> uebersetze ...';
-    // Pro Sprache eigener Request — gibt UI Live-Feedback. Backend hat
-    // /translate-all auch, aber dort blockiert der einzelne Roundtrip alles
-    // bis fertig. Sequenzieller Single-Lang ist UX-freundlicher.
+    // NT-549 Pass 9 (Lisbeth MEDIUM FUNCTIONAL): SSE statt fetch-Chain.
+    // Backend sendet `lang_start` bevor Claude-CLI startet — UI zeigt die
+    // aktive Reihe als "uebersetzt ..." an, auch wenn ein einzelner Aufruf
+    // im Claude-Timeout haengt. lang_done bringt das Resultat.
     let okCount = 0;
     let errCount = 0;
-    for (const lang of targetLangs) {
-      const row = document.querySelector(`tr[data-lang="${lang}"] .status`);
-      if (row) row.innerHTML = '<span class="spinner"></span> ...';
-      try {
-        const r = await fetch(`/api/items/${platform}/${itemId}/translate/${lang}`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({}),
-        });
-        if (!r.ok) {
-          const body = await r.json().catch(() => ({}));
-          if (row) row.innerHTML = `<span class="flag stale">FAIL</span> ${escapeHtml(body.detail || `HTTP ${r.status}`)}`;
-          errCount++;
-        } else {
-          const data = await r.json();
-          const n = data.fields_translated.length;
-          const skipped = data.fields_skipped.length;
-          if (row) row.innerHTML = `<span class="flag ok">OK</span> ${n} Felder${skipped ? `, ${skipped} geschuetzt` : ""} (${data.duration_seconds}s)`;
-          okCount++;
-        }
-      } catch (err) {
-        if (row) row.innerHTML = `<span class="flag stale">NETZWERK</span> ${escapeHtml(String(err))}`;
+    let activeRow = null;
+    const finalize = () => {
+      if (activeRow) {
+        activeRow.innerHTML = `<span class="flag stale">ABGEBROCHEN</span>`;
+        activeRow = null;
+      }
+      document.getElementById("bt-summary").innerHTML =
+        `<strong>Fertig:</strong> ${okCount} ok, ${errCount} fehlgeschlagen.`;
+      startBtn.innerHTML = "Schliessen";
+      startBtn.disabled = false;
+      startBtn.onclick = () => {
+        closeModal();
+        delete state.itemCache[state.currentItemKey];
+        renderContent();
+      };
+    };
+    const es = new EventSource(`/api/items/${platform}/${itemId}/translate-stream`);
+    es.addEventListener("lang_start", (ev) => {
+      const data = JSON.parse(ev.data);
+      const row = document.querySelector(`tr[data-lang="${data.lang}"] .status`);
+      if (row) row.innerHTML = '<span class="spinner"></span> uebersetzt ...';
+      activeRow = row;
+    });
+    es.addEventListener("lang_done", (ev) => {
+      const data = JSON.parse(ev.data);
+      const row = document.querySelector(`tr[data-lang="${data.lang}"] .status`);
+      if (data.ok) {
+        const n = data.fields_translated.length;
+        const skipped = data.fields_skipped.length;
+        if (row) row.innerHTML = `<span class="flag ok">OK</span> ${n} Felder${skipped ? `, ${skipped} geschuetzt` : ""} (${data.duration_seconds}s)`;
+        okCount++;
+      } else {
+        if (row) row.innerHTML = `<span class="flag stale">FAIL</span> ${escapeHtml(data.error || "Fehler")}`;
         errCount++;
       }
-    }
-    document.getElementById("bt-summary").innerHTML =
-      `<strong>Fertig:</strong> ${okCount} ok, ${errCount} fehlgeschlagen.`;
-    startBtn.innerHTML = "Schliessen";
-    startBtn.disabled = false;
-    startBtn.onclick = () => {
-      closeModal();
-      delete state.itemCache[state.currentItemKey];
-      renderContent();
+      activeRow = null;
+    });
+    es.addEventListener("done", () => {
+      es.close();
+      finalize();
+    });
+    es.onerror = () => {
+      es.close();
+      if (activeRow) {
+        activeRow.innerHTML = `<span class="flag stale">NETZWERK</span>`;
+        activeRow = null;
+        errCount++;
+      }
+      finalize();
     };
   });
 }

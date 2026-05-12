@@ -661,23 +661,25 @@ async function openTranslateAllModal(it) {
     stopStream();
     closeModal();
   });
-  // NT-551 / NT-558 Pass 17 (Lisbeth 11:04 MEDIUM + 11:06 LOW FUNCTIONAL):
-  // Cache-Invalidation und Re-Render gehoeren in den close-Handler des
-  // <dialog>, nicht in finalize(). finalize() wird im cancel-Pfad NICHT
-  // gerufen (server schickt zwar 'cancelled', aber stopStream hat den
-  // EventSource zu dem Zeitpunkt schon zu — das Event kommt nicht beim
-  // Browser an). close-Event feuert dagegen bei jedem Close-Pfad:
-  //   - btn-bt-cancel -> closeModal() -> close event
-  //   - ESC am dialog -> close event
-  //   - startBtn nach finalize ("Schliessen") -> closeModal() -> close event
-  // Damit greift Cleanup einheitlich, unabhaengig davon ob der Run
-  // erfolgreich, abgebrochen oder ESC'd wurde.
+  // NT-551 Pass 19 (Lisbeth 11:21 MEDIUM FUNCTIONAL): renderContent() im
+  // cancel-Pfad raced gegen den asyncio.to_thread-Worker, der die aktuell
+  // laufende Sprache noch zu Ende uebersetzt nachdem stopStream() den
+  // EventSource geschlossen hat. Der Cache wuerde mit dem alten fs-Stand
+  // repopuliert, bevor die letzte Translation gelandet ist.
+  //
+  // Fix: Cache-Cleanup + renderContent NUR im success-Pfad
+  // (successfulRun=true wird nur im 'done'-Event-Listener gesetzt).
+  // Beim cancel-Pfad: Cache nicht anfassen — der User muss manual auf
+  // den Item-Tab klicken, dann lädt's mit dann konsistentem fs-Stand.
+  let successfulRun = false;
   document.getElementById("modal").addEventListener(
     "close",
     () => {
       stopStream();
-      delete state.itemCache[state.currentItemKey];
-      renderContent();
+      if (successfulRun) {
+        delete state.itemCache[state.currentItemKey];
+        renderContent();
+      }
     },
     { once: true },
   );
@@ -752,6 +754,11 @@ async function openTranslateAllModal(it) {
       streamDone = true;
       es.close();
       es = null;
+      // NT-551 Pass 19: success-Marker fuer den close-Handler. Nur bei
+      // sauber empfangenem done-Event darf der Handler renderContent()
+      // ausloesen — bei cancel/error wuerde der noch laufende Worker-
+      // Thread sonst race-en.
+      successfulRun = true;
       finalize();
     });
     // NT-550 Pass 13: Server emittiert 'cancelled' wenn er nach

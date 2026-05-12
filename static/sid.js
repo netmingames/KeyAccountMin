@@ -661,19 +661,19 @@ async function openTranslateAllModal(it) {
     stopStream();
     closeModal();
   });
-  // NT-558 Pass 20 (Lisbeth 11:29 LOW FUNCTIONAL): cache-Invalidation +
-  // renderContent gehoeren ins done-Event statt in den close-Handler.
-  // Pass 19 hatte den race "renderContent vor worker-thread fertig"
-  // gefixt, brachte aber neuen race: wenn user closeModal vor dem
-  // synchronen done-Handler aufruft (close-Handler feuert zuerst, dann
-  // queued done-Handler), war successfulRun=false und kein refresh.
-  // Mit cleanup direkt im done-Handler ist's zeitunabhaengig vom close:
-  //   - server schickt 'done' (= alle Threads fertig, fs konsistent)
-  //   - cleanup feuert SOFORT (cache delete + renderContent)
-  //   - close-Handler braucht nur noch stopStream als safety-net
+  // NT-549 Pass 22 (Lisbeth 13:50 LOW FUNCTIONAL): cleanup auf JEDEN
+  // Terminal-Pfad (done, cancelled, onerror, ESC-Close, click outside) --
+  // nicht nur success. Auch bei Abbruch koennen schon Translations
+  // geschrieben sein, der User soll den Stand sehen ohne manual Reload.
+  // close-Event vom <dialog> feuert auf allen Pfaden genau einmal
+  // (once:true), das ist die einzige zentrale Stelle die cleanup macht.
   document.getElementById("modal").addEventListener(
     "close",
-    () => stopStream(),
+    () => {
+      stopStream();
+      delete state.itemCache[state.currentItemKey];
+      renderContent();
+    },
     { once: true },
   );
   // NT-550 Pass 11 (Lisbeth 09:36 MEDIUM FUNCTIONAL): Der Start-Handler wird
@@ -747,13 +747,9 @@ async function openTranslateAllModal(it) {
       streamDone = true;
       es.close();
       es = null;
-      // NT-558 Pass 20: cache invalidate + re-render direkt nach done.
-      // 'done' wird vom Server erst gesendet wenn alle Sprach-Worker
-      // (asyncio.to_thread) fertig geschrieben haben -> fs ist
-      // konsistent. Damit ist's zeitunabhaengig vom Modal-Close-Timing
-      // (Pass 19's race "user schliesst vor done-Handler" verschwindet).
-      delete state.itemCache[state.currentItemKey];
-      renderContent();
+      // NT-549 Pass 22: cleanup wandert komplett in den close-Handler --
+      // hier nur finalize() (UI-Update "Fertig"-Anzeige). User klickt
+      // dann auf "Schliessen", close-Event feuert, cache wird invalidated.
       finalize();
     });
     // NT-550 Pass 13: Server emittiert 'cancelled' wenn er nach

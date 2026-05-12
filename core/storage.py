@@ -180,36 +180,30 @@ def item_dir(data_root: Path, platform: str, item_id: str, name: str | None = No
             )
             if collision:
                 continue
-            # Filter (c3) NT-551 Pass 18 (Lisbeth 11:12 LOW FUNCTIONAL):
-            # Lisbeth-Sicht hat sich nach mehrfachem Pendeln (Pass 9-17)
-            # auf der Pass-13-Logik stabilisiert: Refuse-en wenn x_component
-            # numerisch ist UND nicht (len(x) >= 4 AND len(id) >= 2).
-            # Pass 16's milderer Kompromiss (nur 1-stellige ids refuse)
-            # war zu permissiv -- Lisbeth verlangt jetzt auch Refuse fuer
-            # "12_3_main"/"12" (2-stellige id, 1-stelliger numerischer
-            # suffix). Pass 18 nimmt die Pass-13-Bedingung zurueck:
+            # Filter (c3) NT-549/550/551/558 Pass 21 (Thomas-Entscheidung
+            # 12.05.2026): Stelligkeits-Heuristik ist KOMPLETT entfernt.
+            # Lisbeth hat zwischen Pass 9-20 mehrfach zwischen "c3 rein"
+            # und "c3 raus" gependelt; Thomas hat entschieden: akzeptierende
+            # Variante (Pass 14). Filter (c1) und (c2) decken die echten
+            # compound-id-Risiken weiterhin ab (sibling-folder mit gleichem
+            # id-prefix, bare-folder als laengere id-Variante). Wenn beide
+            # durchlassen, akzeptieren wir den Folder -- auch mit
+            # numerischem Suffix beliebiger Stelligkeit.
             #
-            #   x_component numerisch:
-            #     - len(x) >= 4 UND len(id) >= 2 -> accept
-            #     - sonst -> refuse
+            # Akzeptierte Folger ohne meta.json (alle: kein collision-Hinweis):
+            #   "1_2_main"        / "1"          -> accept
+            #   "1_2024_update"   / "1"          -> accept
+            #   "12_3_main"       / "12"         -> accept
+            #   "12_123_main"     / "12"         -> accept
+            #   "12_2024_update"  / "12"         -> accept
+            #   "777_2024_update" / "777"        -> accept
+            #   "1141975_2024_dlc"/ "1141975"    -> accept
+            #   "1234567_12_main" / "1234567"    -> accept
             #
-            # Faelle:
-            #   "1_2_main"        / "1"   -> refuse (id=1<2)
-            #   "1_2024_update"   / "1"   -> refuse (id=1<2)
-            #   "12_3_main"       / "12"  -> refuse (x=1<4)   [Pass 18 trigger]
-            #   "12_1_main"       / "12"  -> refuse (x=1<4)   [Pass 18 trigger]
-            #   "12_123_main"     / "12"  -> refuse (x=3<4)
-            #   "1234567_12_main" / "1234567" -> refuse (x=2<4)
-            #   "12_2024_update"  / "12"  -> accept (id=2, x=4)
-            #   "42_2024_dlc"     / "42"  -> accept (id=2, x=4)
-            #   "777_2024_update" / "777" -> accept (id=3, x=4)
-            #   "1141975_2024_dlc"/"1141975" -> accept
-            #   "42_1st_pass"     / "42"  -> accept (x nicht numerisch)
-            if x_component.isdigit() and not (
-                len(x_component) >= 4
-                and len(item_id) >= 2
-            ):
-                continue
+            # Langfristig sollen alle Folder per meta.json eindeutig sein
+            # (separates Migration-Ticket); bis dahin ist false-positive-
+            # Resolve akzeptierter Trade-off gegenueber false-negative-
+            # NotFound bei legitimen Legacy-Layouts.
         candidates.append(d)
     if len(candidates) == 1:
         return candidates[0]

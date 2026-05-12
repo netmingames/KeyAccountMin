@@ -180,13 +180,15 @@ def item_dir(data_root: Path, platform: str, item_id: str, name: str | None = No
             )
             if collision:
                 continue
-            # Filter (c3) NT-549 Pass 9 (Lisbeth 08:52 MEDIUM FUNCTIONAL):
-            # Heuristik gegen numerische compound-ids (z.B. "12_2024_update"
-            # fuer item_id "12" — sieht wie compound-id "12_2024" aus).
+            # Filter (c3) NT-549 Pass 9 / NT-550 Pass 11 (Lisbeth 09:36
+            # MEDIUM FUNCTIONAL): Heuristik gegen numerische compound-ids.
+            # Pass 11 verschaerft: 3-stellige numerische x_component (wie
+            # "123") werden jetzt auch refused — sie sehen aus wie eine
+            # Sub-Id, nicht wie Jahr/Bundle-Nummer.
             # Akzeptiert wird ein numerisches x_component nur dann, wenn:
-            #   a) len(x_component) >= 3                — substantieller
-            #      Slug-Anteil (Jahr, Bundle-Nummer), kurze "_2_"-Muster
-            #      sind klassische Sub-id-Erweiterungen.
+            #   a) len(x_component) >= 4                — bewusst restriktiv:
+            #      Jahreszahlen sind 4-stellig, kurze numerische Suffixe
+            #      sind klassische compound-id-Indizien.
             #   b) len(item_id) >= len(x_component) - 1 — item_id muss min.
             #      annaehernd so lang sein wie der x_component. Kurze ids
             #      gegen lange x_components ("12" vs. "2024") sehen wie eine
@@ -194,6 +196,7 @@ def item_dir(data_root: Path, platform: str, item_id: str, name: str | None = No
             #      "12_2024" ist.
             # Beispiele:
             #   "1_2_main"        lookup "1"   -> refuse (x=2, kurz)
+            #   "12_123_main"     lookup "12"  -> refuse (x=3, Pass 11)
             #   "1_2024_update"   lookup "1"   -> refuse (id=1 < x-1=3)
             #   "1_1234_main"     lookup "1"   -> refuse (id=1 < x-1=3)
             #   "12_2024_update"  lookup "12"  -> refuse (id=2 < x-1=3, Pass 9)
@@ -203,7 +206,7 @@ def item_dir(data_root: Path, platform: str, item_id: str, name: str | None = No
             # Ohne meta.json bleibt ein 100%-Verdict prinzipiell nicht moeglich;
             # die Heuristik bevorzugt im Zweifel das Refuse.
             if x_component.isdigit() and not (
-                len(x_component) >= 3
+                len(x_component) >= 4
                 and len(item_id) >= len(x_component) - 1
             ):
                 continue

@@ -241,3 +241,26 @@ def test_pass12_appid_with_year_match_works(tmp_path: Path) -> None:
     p = tmp_path / "steam" / "1141975_2024_dlc"
     p.mkdir(parents=True)
     assert item_dir(tmp_path, "steam", "1141975") == p
+
+
+def test_pass11_three_digit_numeric_suffix_refuses(tmp_path: Path) -> None:
+    """NT-550 Pass 11 (Lisbeth 09:36 MEDIUM FUNCTIONAL): "12_123_main" mit
+    Lookup "12" muss refuse-en — "12_123" sieht wie compound id aus, der
+    3-stellige numerische Suffix ist ein klassisches Sub-Id-Indiz, kein
+    Jahres/Bundle-Slug.
+
+    Verschaerft Pass 12: len(x_component) >= 4 (war: >= 3). x=3 ist jetzt
+    nicht mehr substantiell genug fuer "ist Slug-Anteil"."""
+    p = tmp_path / "steam" / "12_123_main"
+    p.mkdir(parents=True)
+    with pytest.raises(FileNotFoundError):
+        item_dir(tmp_path, "steam", "12")
+
+
+def test_pass11_four_digit_year_suffix_still_works(tmp_path: Path) -> None:
+    """NT-550 Pass 11: 4-stelliger numerischer Suffix (Jahreszahl-aehnlich)
+    bleibt akzeptiert, wenn item_id substantiell ist. "777_2024_update"
+    mit Lookup "777" muss matchen (Regress-Schutz fuer Pass 10/12)."""
+    p = tmp_path / "steam" / "777_2024_update"
+    p.mkdir(parents=True)
+    assert item_dir(tmp_path, "steam", "777") == p

@@ -642,8 +642,14 @@ async function openTranslateAllModal(it) {
   `);
 
   document.getElementById("btn-bt-cancel").addEventListener("click", closeModal);
-  document.getElementById("btn-bt-start").addEventListener("click", () => {
-    const startBtn = document.getElementById("btn-bt-start");
+  // NT-550 Pass 11 (Lisbeth 09:36 MEDIUM FUNCTIONAL): Der Start-Handler wird
+  // via AbortController registriert. finalize() ruft startCtrl.abort() bevor
+  // der Button als "Schliessen" weitergenutzt wird — sonst feuert ein Klick
+  // auf "Schliessen" sowohl den close-Handler als auch den alten
+  // Translation-Start-Handler und ein zweiter Batch laeuft an.
+  const startBtn = document.getElementById("btn-bt-start");
+  const startCtrl = new AbortController();
+  startBtn.addEventListener("click", () => {
     startBtn.disabled = true;
     startBtn.innerHTML = '<span class="spinner"></span> uebersetze ...';
     // NT-549 Pass 9 (Lisbeth MEDIUM FUNCTIONAL): SSE statt fetch-Chain.
@@ -664,6 +670,10 @@ async function openTranslateAllModal(it) {
         `<strong>Fertig:</strong> ${okCount} ok, ${errCount} fehlgeschlagen.`;
       startBtn.innerHTML = "Schliessen";
       startBtn.disabled = false;
+      // Pass 11: alten Start-Handler abreissen, bevor "Schliessen" verdraht
+      // wird. Sonst feuert ein Klick auf "Schliessen" sowohl onclick (close)
+      // als auch den alten addEventListener-Handler (start neuer Batch).
+      startCtrl.abort();
       startBtn.onclick = () => {
         closeModal();
         delete state.itemCache[state.currentItemKey];
@@ -718,7 +728,7 @@ async function openTranslateAllModal(it) {
       errCount += remaining;
       finalize();
     };
-  });
+  }, { signal: startCtrl.signal });
 }
 
 

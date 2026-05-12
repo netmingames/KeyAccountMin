@@ -641,7 +641,37 @@ async function openTranslateAllModal(it) {
     <div id="bt-summary" class="muted"></div>
   `);
 
-  document.getElementById("btn-bt-cancel").addEventListener("click", closeModal);
+  // NT-550/551 Pass 12 (Lisbeth 09:51 + 09:56 LOW/MEDIUM FUNCTIONAL):
+  // Stream-State lebt im outer Scope, damit btn-bt-cancel und die globale
+  // Modal-Close-Logik den aktiven EventSource sauber schliessen koennen.
+  // Vorher lief der SSE-Stream im Hintergrund weiter, wenn der User das
+  // Modal abgebrochen hat — Callbacks feuerten gegen entfernte DOM-Nodes
+  // (bt-summary, btn-bt-start) und ein Restart konnte parallel laufen.
+  let es = null;
+  let streamDone = false;
+  const stopStream = () => {
+    if (es && !streamDone) {
+      streamDone = true;
+      es.close();
+      es = null;
+    }
+  };
+
+  document.getElementById("btn-bt-cancel").addEventListener("click", () => {
+    stopStream();
+    closeModal();
+  });
+  // NT-558 Pass 12 ergaenzt (Lisbeth 09:48 LOW FUNCTIONAL): der HTML-<dialog>
+  // feuert auch dann ein 'close'-Event, wenn der User ESC drueckt oder die
+  // Bestaetigung anders kommt -- nicht nur ueber btn-bt-cancel. stopStream
+  // muss dann ebenfalls feuern, sonst laeuft der EventSource weiter und
+  // Callbacks dereferenzieren entfernte DOM-Knoten. once:true beschraenkt
+  // den Listener auf die naechste Modal-Close-Event-Iteration.
+  document.getElementById("modal").addEventListener(
+    "close",
+    () => stopStream(),
+    { once: true },
+  );
   // NT-550 Pass 11 (Lisbeth 09:36 MEDIUM FUNCTIONAL): Der Start-Handler wird
   // via AbortController registriert. finalize() ruft startCtrl.abort() bevor
   // der Button als "Schliessen" weitergenutzt wird — sonst feuert ein Klick
@@ -660,13 +690,17 @@ async function openTranslateAllModal(it) {
     let errCount = 0;
     let activeRow = null;
     let totalLangs = targetLangs.length;
-    let streamDone = false;
     const finalize = () => {
+      // NT-550/551 Pass 12: Wenn der Stream durch externes Modal-Close
+      // (stopStream) bereits weg ist, finalize NICHT ausfuehren — der
+      // Summary-Node existiert nicht mehr.
+      const summaryNode = document.getElementById("bt-summary");
+      if (!summaryNode) return;
       if (activeRow) {
         activeRow.innerHTML = `<span class="flag stale">ABGEBROCHEN</span>`;
         activeRow = null;
       }
-      document.getElementById("bt-summary").innerHTML =
+      summaryNode.innerHTML =
         `<strong>Fertig:</strong> ${okCount} ok, ${errCount} fehlgeschlagen.`;
       startBtn.innerHTML = "Schliessen";
       startBtn.disabled = false;
@@ -680,7 +714,7 @@ async function openTranslateAllModal(it) {
         renderContent();
       };
     };
-    const es = new EventSource(`/api/items/${platform}/${itemId}/translate-stream`);
+    es = new EventSource(`/api/items/${platform}/${itemId}/translate-stream`);
     es.addEventListener("start", (ev) => {
       const data = JSON.parse(ev.data);
       if (typeof data.n_total === "number") totalLangs = data.n_total;
@@ -708,6 +742,7 @@ async function openTranslateAllModal(it) {
     es.addEventListener("done", () => {
       streamDone = true;
       es.close();
+      es = null;
       finalize();
     });
     // NT-549 Pass 10 (Lisbeth 09:24 LOW FUNCTIONAL): es.onerror feuert auch
@@ -715,16 +750,21 @@ async function openTranslateAllModal(it) {
     // (nach Reset von activeRow). Frueher haben wir errCount nur erhoeht wenn
     // activeRow gesetzt war — Folge: Summary "0 fehlgeschlagen" obwohl Batch
     // abgebrochen ist. Jetzt: alle noch nicht verarbeiteten Sprachen werden
-    // als Fehler markiert (mindestens 1, falls schon alle ein lang_done
-    // hatten und nur das done-Event geschluckt wurde).
+    // als Fehler markiert.
+    // NT-550 Pass 12 (Lisbeth 09:51 LOW FUNCTIONAL): Math.max(0,...) statt
+    // Math.max(1,...). Wenn alle lang_done bereits angekommen sind und nur
+    // das abschliessende done-Event verloren ging, soll kein kuenstlicher
+    // Fehler dazukommen.
     es.onerror = () => {
       if (streamDone) return;
+      streamDone = true;
       es.close();
+      es = null;
       if (activeRow) {
         activeRow.innerHTML = `<span class="flag stale">NETZWERK</span>`;
         activeRow = null;
       }
-      const remaining = Math.max(1, totalLangs - okCount - errCount);
+      const remaining = Math.max(0, totalLangs - okCount - errCount);
       errCount += remaining;
       finalize();
     };

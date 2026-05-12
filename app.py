@@ -392,12 +392,28 @@ def api_translate_lang(platform: str, item_id: str, lang: str, body: _TranslateB
         tx = translator.ClaudeCliTranslator()
     # else: body.engine is None -> get_translator() innerhalb translate_item_lang nimmt env
 
+    # Lisbeth NT-551 Pass 12 (09:56 MEDIUM FUNCTIONAL): translate_item_lang
+    # liest master_*.json + translations/<lang>.json. Eine korrupte Quelle
+    # darf nicht als 500 durchrutschen — konsistent mit translate-all/
+    # translate-stream (422 statt 500). Reihenfolge wichtig: JSONDecodeError
+    # ist eine Subclass von ValueError, daher MUSS sie vor ValueError stehen,
+    # sonst greift weiter unten 400 statt 422.
     try:
         result = translator.translate_item_lang(
             idir, lang, fields=body.fields, translator=tx,
         )
     except translator.TranslationError as e:
         raise HTTPException(status_code=502, detail=str(e))
+    except ValidationError as e:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Quelle fuer '{lang}' hat ungueltiges Schema: {e.errors()}",
+        )
+    except (json.JSONDecodeError, OSError, UnicodeDecodeError) as e:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Quelle fuer '{lang}' unlesbar: {e}",
+        )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     return {

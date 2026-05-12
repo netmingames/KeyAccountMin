@@ -12,6 +12,7 @@ auf devastator:5003. Center-Tile verlinkt direkt auf http://devastator:5003.
 """
 from __future__ import annotations
 
+import asyncio
 import datetime as _dt
 import json
 from pathlib import Path
@@ -546,7 +547,14 @@ async def api_translate_stream(
             yield _evt("lang_start", {"lang": lang})
             entry: dict = {"lang": lang}
             try:
-                r = translator.translate_item_lang(
+                # NT-550 Pass 14 (Lisbeth 10:38 MEDIUM FUNCTIONAL): translate_item_lang
+                # ist synchron + ~30 s pro Sprache. Direkt aufgerufen blockiert es den
+                # asyncio-event-loop und friert parallele Requests auf dem Worker ein
+                # (plus is_disconnected feuert nicht mehr punktlich). Mit
+                # asyncio.to_thread laeuft der Claude-CLI-Subprozess in einem
+                # Worker-Thread, der Loop bleibt frei.
+                r = await asyncio.to_thread(
+                    translator.translate_item_lang,
                     idir, lang, fields=None, translator=tx,
                 )
                 entry.update({

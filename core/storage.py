@@ -180,46 +180,21 @@ def item_dir(data_root: Path, platform: str, item_id: str, name: str | None = No
             )
             if collision:
                 continue
-            # Filter (c3) NT-549 Pass 9 / NT-550 Pass 11 / NT-551 Pass 13
-            # (Lisbeth 10:27 MEDIUM FUNCTIONAL): Heuristik gegen numerische
-            # compound-ids.
-            #
-            # Pass 13 lockert die Pass-12-Bedingung
-            # `len(item_id) >= len(x_component) - 1` wieder auf — sie war zu
-            # restriktiv und rejected valide 2-stellige item_ids mit
-            # Jahres-Suffix (z.B. "12_2024_update" mit Lookup "12"). Da Filter
-            # (c1) und (c2) schon strukturelle Hinweise auf compound-ids
-            # abfangen (sibling-folder mit gleichem id-prefix), reicht hier
-            # eine reine Stelligkeits-Heuristik:
-            #
-            #   a) len(x_component) >= 4 — 4-stelliger Suffix sieht wie Jahres-
-            #      /Bundle-Slug aus, 3 oder weniger Stellen sind klassische
-            #      Sub-Id-Indizien.
-            #   b) len(item_id) >= 2 — einstellige item_ids haben zu hohe
-            #      Kollisionsgefahr ("1_2024_update" ist plausibler als
-            #      compound id "1_2024" denn als slug auf id "1").
-            #
-            # Beispiele (alle ohne meta.json + keine sibling-collision):
-            #   "1_2_main"        lookup "1"   -> refuse (x=2, kurz)
-            #   "12_123_main"     lookup "12"  -> refuse (x=3, kurz, Pass 11)
-            #   "1_2024_update"   lookup "1"   -> refuse (id=1 < 2)
-            #   "1_1234_main"     lookup "1"   -> refuse (id=1 < 2)
-            #   "12_2024_update"  lookup "12"  -> accept (Pass 13)
-            #   "42_2024_dlc"     lookup "42"  -> accept (Pass 13)
-            #   "777_2024_update" lookup "777" -> accept
-            #   "9999_2024"       lookup "9999"-> accept
-            #   "1234567_12_main" lookup "1234567" -> refuse (x=2, kurz)
-            #   "42_1st_pass"     lookup "42"  -> accept (x nicht numerisch)
-            #
-            # Ohne meta.json bleibt ein 100%-Verdict prinzipiell nicht moeglich.
-            # Wenn beide Filter (c1) und (c2) durchlassen, ist ein numerischer
-            # 4+-stelliger Suffix auf einer 2+-stelligen id ausreichend
-            # eindeutig als Slug-Anteil.
-            if x_component.isdigit() and not (
-                len(x_component) >= 4
-                and len(item_id) >= 2
-            ):
-                continue
+            # Filter (c3) NT-550 Pass 14 (Lisbeth 10:38 LOW FUNCTIONAL):
+            # entfernt. Die Stelligkeits-Heuristik (Pass 9/11/12/13) war
+            # zu aggressiv und rejected legitime Layouts wie
+            # `<item_id>_123_*` ohne meta.json, obwohl keine collision-
+            # Indizien existierten. Filter (c1) und (c2) decken die
+            # echten compound-id-Risiken ab (sibling-folder mit gleichem
+            # id-Prefix, oder bare-folder als laengere id-Variante).
+            # Wenn beide durchlassen, akzeptieren wir den Folder — auch
+            # mit numerischem Suffix beliebiger Stelligkeit. Im Zweifel
+            # konkurriert das mit dem theoretischen "1_2_main koennte
+            # compound id 1_2 sein"-Fall, aber Lisbeth's letzte Sicht
+            # (NT-550 10:38) bevorzugt false-positive-Resolve gegenueber
+            # false-negative-NotFound. Auch real existieren AppIDs als
+            # Folder-Praefix in dem repo und Sub-Folder mit numerischen
+            # Slugs (Versions-Bundles).
         candidates.append(d)
     if len(candidates) == 1:
         return candidates[0]

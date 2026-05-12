@@ -653,6 +653,8 @@ async function openTranslateAllModal(it) {
     let okCount = 0;
     let errCount = 0;
     let activeRow = null;
+    let totalLangs = targetLangs.length;
+    let streamDone = false;
     const finalize = () => {
       if (activeRow) {
         activeRow.innerHTML = `<span class="flag stale">ABGEBROCHEN</span>`;
@@ -669,6 +671,10 @@ async function openTranslateAllModal(it) {
       };
     };
     const es = new EventSource(`/api/items/${platform}/${itemId}/translate-stream`);
+    es.addEventListener("start", (ev) => {
+      const data = JSON.parse(ev.data);
+      if (typeof data.n_total === "number") totalLangs = data.n_total;
+    });
     es.addEventListener("lang_start", (ev) => {
       const data = JSON.parse(ev.data);
       const row = document.querySelector(`tr[data-lang="${data.lang}"] .status`);
@@ -690,16 +696,26 @@ async function openTranslateAllModal(it) {
       activeRow = null;
     });
     es.addEventListener("done", () => {
+      streamDone = true;
       es.close();
       finalize();
     });
+    // NT-549 Pass 10 (Lisbeth 09:24 LOW FUNCTIONAL): es.onerror feuert auch
+    // wenn der Stream VOR dem ersten lang_start failed oder zwischen Sprachen
+    // (nach Reset von activeRow). Frueher haben wir errCount nur erhoeht wenn
+    // activeRow gesetzt war — Folge: Summary "0 fehlgeschlagen" obwohl Batch
+    // abgebrochen ist. Jetzt: alle noch nicht verarbeiteten Sprachen werden
+    // als Fehler markiert (mindestens 1, falls schon alle ein lang_done
+    // hatten und nur das done-Event geschluckt wurde).
     es.onerror = () => {
+      if (streamDone) return;
       es.close();
       if (activeRow) {
         activeRow.innerHTML = `<span class="flag stale">NETZWERK</span>`;
         activeRow = null;
-        errCount++;
       }
+      const remaining = Math.max(1, totalLangs - okCount - errCount);
+      errCount += remaining;
       finalize();
     };
   });

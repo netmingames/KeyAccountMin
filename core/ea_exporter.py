@@ -38,14 +38,23 @@ def _values_for_lang(idir: Path, lang: str) -> tuple[dict[str, str], bool]:
 
     Lisbeth NT-549 Pass 8 (16:33 MEDIUM FUNCTIONAL): per-lang Error-Isolation
     wie im Haupt-Exporter (core/exporter.py) — eine kaputte translations/<lang>.json
-    darf nicht den ganzen EA-Flow killen. Bei JSON-/UTF-8-/IO-/Schema-Fehlern
-    wird die Sprache als leer behandelt und corrupt=True gemeldet, damit Caller
-    den Zustand im UI/ZIP-README sichtbar machen koennen.
+    darf nicht den ganzen EA-Flow killen.
+
+    Lisbeth NT-549/550/551 Pass 10 (09:24/08:57/09:01 MEDIUM FUNCTIONAL):
+    gleicher Guard fuer master_*.json. Frueher wurde `read_master()` ungeguardet
+    aufgerufen; eine korrupte/schema-invalide Master-Datei hat /ea-status,
+    /ea-export/<lang>.txt und /ea-export.zip mit 500 abgeschossen. Jetzt
+    werden ValidationError/JSONDecodeError/OSError/UnicodeDecodeError abgefangen
+    und die Sprache als leer + corrupt=True gemeldet — konsistent mit dem
+    Translations-Pfad.
     """
     meta = edit_ops.read_meta(idir)
     empty = {f: "" for f in schema.STEAM_FIELDS_EA}
     if lang == meta.master_lang:
-        master = edit_ops.read_master(idir)
+        try:
+            master = edit_ops.read_master(idir)
+        except (ValidationError, json.JSONDecodeError, OSError, UnicodeDecodeError):
+            return empty, True
         return {f: master.fields.get(f, "") for f in schema.STEAM_FIELDS_EA}, False
     tpath = storage.translation_path(idir, lang)
     if not tpath.exists():

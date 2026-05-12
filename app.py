@@ -449,9 +449,14 @@ def api_translate_all(platform: str, item_id: str, body: _TranslateBody) -> dict
                 "fields_translated": list(r.fields_translated.keys()),
                 "fields_skipped": r.fields_skipped,
             })
-        except translator.TranslationError as e:
-            entry.update({"ok": False, "error": str(e)})
-        except ValueError as e:
+        # Lisbeth NT-550 Pass 5 (08:57 MEDIUM FUNCTIONAL): translate_item_lang
+        # liest master_*.json + translations/<lang>.json. Eine korrupte/schema-
+        # invalide Datei kann ValidationError/JSONDecodeError/OSError/
+        # UnicodeDecodeError werfen — frueher hat das den ganzen Batch mit
+        # 500 abgebrochen. Jetzt wird die Sprache als failed gemeldet, der Rest
+        # laeuft weiter.
+        except (translator.TranslationError, ValueError, ValidationError,
+                json.JSONDecodeError, OSError, UnicodeDecodeError) as e:
             entry.update({"ok": False, "error": str(e)})
         results.append(entry)
 
@@ -518,10 +523,12 @@ def api_translate_stream(platform: str, item_id: str, engine: str | None = None)
                     "fields_skipped": r.fields_skipped,
                 })
                 n_ok += 1
-            except translator.TranslationError as e:
-                entry.update({"ok": False, "error": str(e)})
-                n_failed += 1
-            except ValueError as e:
+            # Lisbeth NT-549 Pass 10 (09:24 MEDIUM FUNCTIONAL): gleicher Guard
+            # wie translate-all — eine korrupte Datei darf nicht den Stream
+            # mitten in der Batch abreissen lassen. Sprache als failed melden,
+            # Loop laeuft weiter, abschliessendes done-Event wird emitted.
+            except (translator.TranslationError, ValueError, ValidationError,
+                    json.JSONDecodeError, OSError, UnicodeDecodeError) as e:
                 entry.update({"ok": False, "error": str(e)})
                 n_failed += 1
             yield _evt("lang_done", entry)

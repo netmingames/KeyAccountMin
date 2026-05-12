@@ -661,26 +661,19 @@ async function openTranslateAllModal(it) {
     stopStream();
     closeModal();
   });
-  // NT-551 Pass 19 (Lisbeth 11:21 MEDIUM FUNCTIONAL): renderContent() im
-  // cancel-Pfad raced gegen den asyncio.to_thread-Worker, der die aktuell
-  // laufende Sprache noch zu Ende uebersetzt nachdem stopStream() den
-  // EventSource geschlossen hat. Der Cache wuerde mit dem alten fs-Stand
-  // repopuliert, bevor die letzte Translation gelandet ist.
-  //
-  // Fix: Cache-Cleanup + renderContent NUR im success-Pfad
-  // (successfulRun=true wird nur im 'done'-Event-Listener gesetzt).
-  // Beim cancel-Pfad: Cache nicht anfassen — der User muss manual auf
-  // den Item-Tab klicken, dann lädt's mit dann konsistentem fs-Stand.
-  let successfulRun = false;
+  // NT-558 Pass 20 (Lisbeth 11:29 LOW FUNCTIONAL): cache-Invalidation +
+  // renderContent gehoeren ins done-Event statt in den close-Handler.
+  // Pass 19 hatte den race "renderContent vor worker-thread fertig"
+  // gefixt, brachte aber neuen race: wenn user closeModal vor dem
+  // synchronen done-Handler aufruft (close-Handler feuert zuerst, dann
+  // queued done-Handler), war successfulRun=false und kein refresh.
+  // Mit cleanup direkt im done-Handler ist's zeitunabhaengig vom close:
+  //   - server schickt 'done' (= alle Threads fertig, fs konsistent)
+  //   - cleanup feuert SOFORT (cache delete + renderContent)
+  //   - close-Handler braucht nur noch stopStream als safety-net
   document.getElementById("modal").addEventListener(
     "close",
-    () => {
-      stopStream();
-      if (successfulRun) {
-        delete state.itemCache[state.currentItemKey];
-        renderContent();
-      }
-    },
+    () => stopStream(),
     { once: true },
   );
   // NT-550 Pass 11 (Lisbeth 09:36 MEDIUM FUNCTIONAL): Der Start-Handler wird
@@ -754,11 +747,13 @@ async function openTranslateAllModal(it) {
       streamDone = true;
       es.close();
       es = null;
-      // NT-551 Pass 19: success-Marker fuer den close-Handler. Nur bei
-      // sauber empfangenem done-Event darf der Handler renderContent()
-      // ausloesen — bei cancel/error wuerde der noch laufende Worker-
-      // Thread sonst race-en.
-      successfulRun = true;
+      // NT-558 Pass 20: cache invalidate + re-render direkt nach done.
+      // 'done' wird vom Server erst gesendet wenn alle Sprach-Worker
+      // (asyncio.to_thread) fertig geschrieben haben -> fs ist
+      // konsistent. Damit ist's zeitunabhaengig vom Modal-Close-Timing
+      // (Pass 19's race "user schliesst vor done-Handler" verschwindet).
+      delete state.itemCache[state.currentItemKey];
+      renderContent();
       finalize();
     });
     // NT-550 Pass 13: Server emittiert 'cancelled' wenn er nach

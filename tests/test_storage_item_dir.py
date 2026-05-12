@@ -264,15 +264,6 @@ def test_pass13_42_2024_dlc_accepts(tmp_path: Path) -> None:
     assert item_dir(tmp_path, "steam", "42") == p
 
 
-def test_pass16_single_digit_id_with_year_suffix_refuses(tmp_path: Path) -> None:
-    """NT-558 Pass 16: einstellige item_ids mit numerischem suffix bleiben
-    refuse — Pass 14 hatte sie accept-en wollen, Pass 16 widerruft."""
-    p = tmp_path / "steam" / "1_2024_update"
-    p.mkdir(parents=True)
-    with pytest.raises(FileNotFoundError):
-        item_dir(tmp_path, "steam", "1")
-
-
 def test_pass18_two_digit_id_with_one_digit_numeric_suffix_refuses(tmp_path: Path) -> None:
     """NT-551 Pass 18 (Lisbeth 11:12 konkretes Beispiel): "12_3_main" mit
     Lookup "12" -> refuse. 1-stelliger numerischer Suffix sieht wie

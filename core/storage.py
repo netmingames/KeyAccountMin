@@ -180,21 +180,27 @@ def item_dir(data_root: Path, platform: str, item_id: str, name: str | None = No
             )
             if collision:
                 continue
-            # Filter (c3) NT-550 Pass 14 (Lisbeth 10:38 LOW FUNCTIONAL):
-            # entfernt. Die Stelligkeits-Heuristik (Pass 9/11/12/13) war
-            # zu aggressiv und rejected legitime Layouts wie
-            # `<item_id>_123_*` ohne meta.json, obwohl keine collision-
-            # Indizien existierten. Filter (c1) und (c2) decken die
-            # echten compound-id-Risiken ab (sibling-folder mit gleichem
-            # id-Prefix, oder bare-folder als laengere id-Variante).
-            # Wenn beide durchlassen, akzeptieren wir den Folder — auch
-            # mit numerischem Suffix beliebiger Stelligkeit. Im Zweifel
-            # konkurriert das mit dem theoretischen "1_2_main koennte
-            # compound id 1_2 sein"-Fall, aber Lisbeth's letzte Sicht
-            # (NT-550 10:38) bevorzugt false-positive-Resolve gegenueber
-            # false-negative-NotFound. Auch real existieren AppIDs als
-            # Folder-Praefix in dem repo und Sub-Folder mit numerischen
-            # Slugs (Versions-Bundles).
+            # Filter (c3) NT-558 Pass 16 (Lisbeth 10:57 LOW FUNCTIONAL):
+            # Lisbeth pendelt zwischen "Heuristik weg" (Pass 14) und
+            # "Heuristik zurueck" (Pass 16). Minimal-Kompromiss: Refuse
+            # nur fuer den konkreten Reproducer "1_2_main"/"1" — einstellige
+            # item_ids mit numerischem x_component. Begruendung: bei 1-
+            # stelliger id ist die Wahrscheinlichkeit hoch dass der Folder
+            # eine compound-id "1_2" mit slug "main" ist, nicht id "1" mit
+            # slug "2_main". Bei 2+ stelliger id ist die Folder-Konvention
+            # eindeutiger und Pass 14's Argumentation (Filter c1/c2 reichen)
+            # bleibt gueltig.
+            #
+            # Faelle:
+            #   "1_2_main"        / "1"   -> refuse (id=1, numeric x)
+            #   "1_2024_update"   / "1"   -> refuse (id=1, numeric x)
+            #   "1_1234_main"     / "1"   -> refuse (id=1, numeric x)
+            #   "12_2024_update"  / "12"  -> accept (id>=2)
+            #   "42_2024_dlc"     / "42"  -> accept (id>=2)
+            #   "12_123_main"     / "12"  -> accept (id>=2)
+            #   "1234567_12_main" / "1234567" -> accept (id>=2)
+            if x_component.isdigit() and len(item_id) < 2:
+                continue
         candidates.append(d)
     if len(candidates) == 1:
         return candidates[0]

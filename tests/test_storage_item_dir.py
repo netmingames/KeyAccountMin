@@ -146,15 +146,15 @@ def test_pass8_collision_with_sibling_longer_prefix_refuses(tmp_path: Path) -> N
         item_dir(tmp_path, "steam", "1")
 
 
-def test_pass14_lone_compound_slug_with_numeric_subid_accepts(tmp_path: Path) -> None:
-    """NT-550 Pass 14 (Lisbeth 10:38 LOW FUNCTIONAL): einzelner unreadable
-    Folder "1_2_main" fuer Lookup "1" wird jetzt akzeptiert. Ohne sibling-
-    collision-Hinweis hat Pass 14 die numerische Stelligkeits-Heuristik
-    entfernt — Filter (c1)+(c2) reichen. Pass 9 (NT-548 14:59) hatte das
-    refuse-Verhalten gefordert, Pass 14 widerruft."""
+def test_pass16_lone_compound_slug_with_numeric_subid_refuses(tmp_path: Path) -> None:
+    """NT-558 Pass 16 (Lisbeth 10:57 LOW FUNCTIONAL): Lisbeth pendelte
+    Pass 14 (entfernen) zurueck. Pass 16 macht Minimal-Kompromiss: nur
+    1-stellige item_ids mit numerischem x_component refuse-en. "1_2_main"
+    /"1" trifft das (id=1, x=numeric), also refuse."""
     main = tmp_path / "steam" / "1_2_main"
     main.mkdir(parents=True)
-    assert item_dir(tmp_path, "steam", "1") == main
+    with pytest.raises(FileNotFoundError):
+        item_dir(tmp_path, "steam", "1")
 
 
 def test_pass10_lone_folder_with_long_numeric_segment_matches(tmp_path: Path) -> None:
@@ -178,21 +178,22 @@ def test_pass10_lone_folder_with_alphanumeric_segment_matches(tmp_path: Path) ->
     assert item_dir(tmp_path, "steam", "42") == p
 
 
-def test_pass14_short_item_id_with_year_like_segment_accepts(tmp_path: Path) -> None:
-    """NT-550 Pass 14: einstelliges item_id "1" mit kollisionsfreiem
-    Folder "1_2024_update" wird jetzt akzeptiert. Pass 11 hatte das
-    refuse-Verhalten gefordert, Lisbeth widerruft mit Pass 14."""
+def test_pass16_short_item_id_with_year_like_segment_refuses(tmp_path: Path) -> None:
+    """NT-558 Pass 16: einstellige item_ids mit numerischem Suffix
+    werden weiterhin refuse-t (Pass 14 wurde teilweise widerrufen)."""
     p = tmp_path / "steam" / "1_2024_update"
     p.mkdir(parents=True)
-    assert item_dir(tmp_path, "steam", "1") == p
+    with pytest.raises(FileNotFoundError):
+        item_dir(tmp_path, "steam", "1")
 
 
-def test_pass14_short_item_id_with_long_numeric_segment_accepts(tmp_path: Path) -> None:
-    """NT-550 Pass 14: "1_1234_main" mit Lookup "1" wird akzeptiert,
-    sofern kein sibling-Hinweis auf compound id "1_1234" vorliegt."""
+def test_pass16_short_item_id_with_long_numeric_segment_refuses(tmp_path: Path) -> None:
+    """NT-558 Pass 16: "1_1234_main" mit Lookup "1" -> refuse (1-stellige
+    id mit numerischem suffix)."""
     p = tmp_path / "steam" / "1_1234_main"
     p.mkdir(parents=True)
-    assert item_dir(tmp_path, "steam", "1") == p
+    with pytest.raises(FileNotFoundError):
+        item_dir(tmp_path, "steam", "1")
 
 
 def test_pass11_pass10_year_like_match_still_works(tmp_path: Path) -> None:
@@ -262,10 +263,10 @@ def test_pass13_42_2024_dlc_accepts(tmp_path: Path) -> None:
     assert item_dir(tmp_path, "steam", "42") == p
 
 
-def test_pass14_single_digit_id_with_year_suffix_accepts(tmp_path: Path) -> None:
-    """NT-550 Pass 14: einstellige item_ids werden mit numerischem Suffix
-    jetzt auch akzeptiert. Pass 13 hatte das noch refuse-t (mit Begruendung
-    "id zu kurz"), Pass 14 entfernt die Stelligkeits-Heuristik komplett."""
+def test_pass16_single_digit_id_with_year_suffix_refuses(tmp_path: Path) -> None:
+    """NT-558 Pass 16: einstellige item_ids mit numerischem suffix bleiben
+    refuse — Pass 14 hatte sie accept-en wollen, Pass 16 widerruft."""
     p = tmp_path / "steam" / "1_2024_update"
     p.mkdir(parents=True)
-    assert item_dir(tmp_path, "steam", "1") == p
+    with pytest.raises(FileNotFoundError):
+        item_dir(tmp_path, "steam", "1")

@@ -180,26 +180,35 @@ def item_dir(data_root: Path, platform: str, item_id: str, name: str | None = No
             )
             if collision:
                 continue
-            # Filter (c3) NT-558 Pass 16 (Lisbeth 10:57 LOW FUNCTIONAL):
-            # Lisbeth pendelt zwischen "Heuristik weg" (Pass 14) und
-            # "Heuristik zurueck" (Pass 16). Minimal-Kompromiss: Refuse
-            # nur fuer den konkreten Reproducer "1_2_main"/"1" — einstellige
-            # item_ids mit numerischem x_component. Begruendung: bei 1-
-            # stelliger id ist die Wahrscheinlichkeit hoch dass der Folder
-            # eine compound-id "1_2" mit slug "main" ist, nicht id "1" mit
-            # slug "2_main". Bei 2+ stelliger id ist die Folder-Konvention
-            # eindeutiger und Pass 14's Argumentation (Filter c1/c2 reichen)
-            # bleibt gueltig.
+            # Filter (c3) NT-551 Pass 18 (Lisbeth 11:12 LOW FUNCTIONAL):
+            # Lisbeth-Sicht hat sich nach mehrfachem Pendeln (Pass 9-17)
+            # auf der Pass-13-Logik stabilisiert: Refuse-en wenn x_component
+            # numerisch ist UND nicht (len(x) >= 4 AND len(id) >= 2).
+            # Pass 16's milderer Kompromiss (nur 1-stellige ids refuse)
+            # war zu permissiv -- Lisbeth verlangt jetzt auch Refuse fuer
+            # "12_3_main"/"12" (2-stellige id, 1-stelliger numerischer
+            # suffix). Pass 18 nimmt die Pass-13-Bedingung zurueck:
+            #
+            #   x_component numerisch:
+            #     - len(x) >= 4 UND len(id) >= 2 -> accept
+            #     - sonst -> refuse
             #
             # Faelle:
-            #   "1_2_main"        / "1"   -> refuse (id=1, numeric x)
-            #   "1_2024_update"   / "1"   -> refuse (id=1, numeric x)
-            #   "1_1234_main"     / "1"   -> refuse (id=1, numeric x)
-            #   "12_2024_update"  / "12"  -> accept (id>=2)
-            #   "42_2024_dlc"     / "42"  -> accept (id>=2)
-            #   "12_123_main"     / "12"  -> accept (id>=2)
-            #   "1234567_12_main" / "1234567" -> accept (id>=2)
-            if x_component.isdigit() and len(item_id) < 2:
+            #   "1_2_main"        / "1"   -> refuse (id=1<2)
+            #   "1_2024_update"   / "1"   -> refuse (id=1<2)
+            #   "12_3_main"       / "12"  -> refuse (x=1<4)   [Pass 18 trigger]
+            #   "12_1_main"       / "12"  -> refuse (x=1<4)   [Pass 18 trigger]
+            #   "12_123_main"     / "12"  -> refuse (x=3<4)
+            #   "1234567_12_main" / "1234567" -> refuse (x=2<4)
+            #   "12_2024_update"  / "12"  -> accept (id=2, x=4)
+            #   "42_2024_dlc"     / "42"  -> accept (id=2, x=4)
+            #   "777_2024_update" / "777" -> accept (id=3, x=4)
+            #   "1141975_2024_dlc"/"1141975" -> accept
+            #   "42_1st_pass"     / "42"  -> accept (x nicht numerisch)
+            if x_component.isdigit() and not (
+                len(x_component) >= 4
+                and len(item_id) >= 2
+            ):
                 continue
         candidates.append(d)
     if len(candidates) == 1:

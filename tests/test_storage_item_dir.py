@@ -217,13 +217,15 @@ def test_pass13_two_digit_id_with_year_like_segment_accepts(tmp_path: Path) -> N
     assert item_dir(tmp_path, "steam", "12") == p
 
 
-def test_pass14_long_id_with_short_numeric_segment_accepts(tmp_path: Path) -> None:
-    """NT-550 Pass 14: "1234567_12_main" mit Lookup "1234567" wird jetzt
-    akzeptiert, auch wenn der Suffix "12" kurz ist. Pass 12 hatte das
-    refuse-Verhalten gefordert; Pass 14 entfernt die Stelligkeits-Heuristik."""
+def test_pass18_long_id_with_short_numeric_segment_refuses(tmp_path: Path) -> None:
+    """NT-551 Pass 18 (Lisbeth 11:12 LOW FUNCTIONAL): "1234567_12_main"
+    mit Lookup "1234567" -> refuse. 2-stelliger numerischer Suffix ist
+    nicht substantiell genug fuer Slug-Erkennung; sieht wie Sub-Id aus.
+    Pass 14 hatte hier accept gefordert, Pass 18 widerruft."""
     p = tmp_path / "steam" / "1234567_12_main"
     p.mkdir(parents=True)
-    assert item_dir(tmp_path, "steam", "1234567") == p
+    with pytest.raises(FileNotFoundError):
+        item_dir(tmp_path, "steam", "1234567")
 
 
 def test_pass12_appid_with_year_match_works(tmp_path: Path) -> None:
@@ -234,15 +236,14 @@ def test_pass12_appid_with_year_match_works(tmp_path: Path) -> None:
     assert item_dir(tmp_path, "steam", "1141975") == p
 
 
-def test_pass14_three_digit_numeric_suffix_accepts(tmp_path: Path) -> None:
-    """NT-550 Pass 14 (Lisbeth 10:38 LOW FUNCTIONAL): "12_123_main" mit
-    Lookup "12" wird jetzt akzeptiert, sofern kein sibling-collision-Hinweis
-    vorliegt. Pass 11 hatte den 3-stelligen numerischen Suffix als
-    Sub-Id-Indiz gewertet und refuse-t; Pass 14 wirft die Stelligkeits-
-    Heuristik komplett raus."""
+def test_pass18_three_digit_numeric_suffix_refuses(tmp_path: Path) -> None:
+    """NT-551 Pass 18: "12_123_main" mit Lookup "12" -> refuse. 3-stelliger
+    numerischer Suffix wird als Sub-Id-Indiz gewertet (analog Pass 11).
+    Pass 14 hatte das accept-en wollen, Pass 18 widerruft."""
     p = tmp_path / "steam" / "12_123_main"
     p.mkdir(parents=True)
-    assert item_dir(tmp_path, "steam", "12") == p
+    with pytest.raises(FileNotFoundError):
+        item_dir(tmp_path, "steam", "12")
 
 
 def test_pass11_four_digit_year_suffix_still_works(tmp_path: Path) -> None:
@@ -270,3 +271,14 @@ def test_pass16_single_digit_id_with_year_suffix_refuses(tmp_path: Path) -> None
     p.mkdir(parents=True)
     with pytest.raises(FileNotFoundError):
         item_dir(tmp_path, "steam", "1")
+
+
+def test_pass18_two_digit_id_with_one_digit_numeric_suffix_refuses(tmp_path: Path) -> None:
+    """NT-551 Pass 18 (Lisbeth 11:12 konkretes Beispiel): "12_3_main" mit
+    Lookup "12" -> refuse. 1-stelliger numerischer Suffix sieht wie
+    Sub-Id-Indiz aus, nicht wie Jahres-Slug. Pass 14/16 hatte das
+    akzeptiert, Pass 18 widerruft."""
+    p = tmp_path / "steam" / "12_3_main"
+    p.mkdir(parents=True)
+    with pytest.raises(FileNotFoundError):
+        item_dir(tmp_path, "steam", "12")

@@ -180,34 +180,44 @@ def item_dir(data_root: Path, platform: str, item_id: str, name: str | None = No
             )
             if collision:
                 continue
-            # Filter (c3) NT-549 Pass 9 / NT-550 Pass 11 (Lisbeth 09:36
-            # MEDIUM FUNCTIONAL): Heuristik gegen numerische compound-ids.
-            # Pass 11 verschaerft: 3-stellige numerische x_component (wie
-            # "123") werden jetzt auch refused — sie sehen aus wie eine
-            # Sub-Id, nicht wie Jahr/Bundle-Nummer.
-            # Akzeptiert wird ein numerisches x_component nur dann, wenn:
-            #   a) len(x_component) >= 4                — bewusst restriktiv:
-            #      Jahreszahlen sind 4-stellig, kurze numerische Suffixe
-            #      sind klassische compound-id-Indizien.
-            #   b) len(item_id) >= len(x_component) - 1 — item_id muss min.
-            #      annaehernd so lang sein wie der x_component. Kurze ids
-            #      gegen lange x_components ("12" vs. "2024") sehen wie eine
-            #      compound id aus, wo das eigentliche item_id der Verbund
-            #      "12_2024" ist.
-            # Beispiele:
+            # Filter (c3) NT-549 Pass 9 / NT-550 Pass 11 / NT-551 Pass 13
+            # (Lisbeth 10:27 MEDIUM FUNCTIONAL): Heuristik gegen numerische
+            # compound-ids.
+            #
+            # Pass 13 lockert die Pass-12-Bedingung
+            # `len(item_id) >= len(x_component) - 1` wieder auf — sie war zu
+            # restriktiv und rejected valide 2-stellige item_ids mit
+            # Jahres-Suffix (z.B. "12_2024_update" mit Lookup "12"). Da Filter
+            # (c1) und (c2) schon strukturelle Hinweise auf compound-ids
+            # abfangen (sibling-folder mit gleichem id-prefix), reicht hier
+            # eine reine Stelligkeits-Heuristik:
+            #
+            #   a) len(x_component) >= 4 — 4-stelliger Suffix sieht wie Jahres-
+            #      /Bundle-Slug aus, 3 oder weniger Stellen sind klassische
+            #      Sub-Id-Indizien.
+            #   b) len(item_id) >= 2 — einstellige item_ids haben zu hohe
+            #      Kollisionsgefahr ("1_2024_update" ist plausibler als
+            #      compound id "1_2024" denn als slug auf id "1").
+            #
+            # Beispiele (alle ohne meta.json + keine sibling-collision):
             #   "1_2_main"        lookup "1"   -> refuse (x=2, kurz)
-            #   "12_123_main"     lookup "12"  -> refuse (x=3, Pass 11)
-            #   "1_2024_update"   lookup "1"   -> refuse (id=1 < x-1=3)
-            #   "1_1234_main"     lookup "1"   -> refuse (id=1 < x-1=3)
-            #   "12_2024_update"  lookup "12"  -> refuse (id=2 < x-1=3, Pass 9)
-            #   "777_2024_update" lookup "777" -> accept (id=3 == x-1=3)
-            #   "9999_2024"       lookup "9999"-> accept (id >= x)
+            #   "12_123_main"     lookup "12"  -> refuse (x=3, kurz, Pass 11)
+            #   "1_2024_update"   lookup "1"   -> refuse (id=1 < 2)
+            #   "1_1234_main"     lookup "1"   -> refuse (id=1 < 2)
+            #   "12_2024_update"  lookup "12"  -> accept (Pass 13)
+            #   "42_2024_dlc"     lookup "42"  -> accept (Pass 13)
+            #   "777_2024_update" lookup "777" -> accept
+            #   "9999_2024"       lookup "9999"-> accept
+            #   "1234567_12_main" lookup "1234567" -> refuse (x=2, kurz)
             #   "42_1st_pass"     lookup "42"  -> accept (x nicht numerisch)
-            # Ohne meta.json bleibt ein 100%-Verdict prinzipiell nicht moeglich;
-            # die Heuristik bevorzugt im Zweifel das Refuse.
+            #
+            # Ohne meta.json bleibt ein 100%-Verdict prinzipiell nicht moeglich.
+            # Wenn beide Filter (c1) und (c2) durchlassen, ist ein numerischer
+            # 4+-stelliger Suffix auf einer 2+-stelligen id ausreichend
+            # eindeutig als Slug-Anteil.
             if x_component.isdigit() and not (
                 len(x_component) >= 4
-                and len(item_id) >= len(x_component) - 1
+                and len(item_id) >= 2
             ):
                 continue
         candidates.append(d)

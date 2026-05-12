@@ -212,18 +212,17 @@ def test_pass11_pass10_year_like_match_still_works(tmp_path: Path) -> None:
     assert item_dir(tmp_path, "steam", "777") == p
 
 
-def test_pass12_two_digit_id_with_year_like_segment_refuses(tmp_path: Path) -> None:
-    """Pass 12 (Lisbeth NT-549 08:52 MEDIUM FUNCTIONAL): "12_2024_update"
-    mit Lookup "12" muss refuse-en — "12_2024" ist plausible compound id
-    und meta.json fehlt.
-
-    Heuristik (verschaerft Pass 11): numerischer x_component nur akzeptieren
-    wenn len(item_id) >= len(x_component) - 1. Hier: id=2, x=4 -> 2 < 3,
-    also refuse."""
+def test_pass13_two_digit_id_with_year_like_segment_accepts(tmp_path: Path) -> None:
+    """NT-551 Pass 13 (Lisbeth 10:27 MEDIUM FUNCTIONAL): "12_2024_update"
+    mit Lookup "12" muss jetzt ACCEPT-en. Die Pass-12-Bedingung
+    `len(item_id) >= len(x_component) - 1` war zu restriktiv — Filter (c1)
+    und (c2) decken die compound-id-Risiken bereits ab; bei kollisionsfreien
+    Folders reicht len(x_component) >= 4 und len(item_id) >= 2 als Slug-
+    Erkennung. Vorher (Pass 12) war's refuse, das war eine zu starke
+    Verschaerfung."""
     p = tmp_path / "steam" / "12_2024_update"
     p.mkdir(parents=True)
-    with pytest.raises(FileNotFoundError):
-        item_dir(tmp_path, "steam", "12")
+    assert item_dir(tmp_path, "steam", "12") == p
 
 
 def test_pass12_long_id_with_short_numeric_segment_refuses(tmp_path: Path) -> None:
@@ -264,3 +263,22 @@ def test_pass11_four_digit_year_suffix_still_works(tmp_path: Path) -> None:
     p = tmp_path / "steam" / "777_2024_update"
     p.mkdir(parents=True)
     assert item_dir(tmp_path, "steam", "777") == p
+
+
+def test_pass13_42_2024_dlc_accepts(tmp_path: Path) -> None:
+    """NT-551 Pass 13 (Lisbeth 10:27 Beispiel): "42_2024_dlc" mit Lookup
+    "42" muss matchen. Diese 2-stellige item_id + 4-stelliger Jahres-Suffix
+    Kombination wurde nach Pass 12 faelschlich refused."""
+    p = tmp_path / "steam" / "42_2024_dlc"
+    p.mkdir(parents=True)
+    assert item_dir(tmp_path, "steam", "42") == p
+
+
+def test_pass13_single_digit_id_with_year_suffix_still_refuses(tmp_path: Path) -> None:
+    """NT-551 Pass 13: einstellige item_ids bleiben weiterhin abgelehnt
+    auch bei 4-stelligem numerischen Suffix. "1_2024_update" mit Lookup
+    "1" -> refuse, weil id zu kurz fuer eindeutige Slug-Erkennung."""
+    p = tmp_path / "steam" / "1_2024_update"
+    p.mkdir(parents=True)
+    with pytest.raises(FileNotFoundError):
+        item_dir(tmp_path, "steam", "1")

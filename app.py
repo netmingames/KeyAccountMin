@@ -486,7 +486,9 @@ def api_translate_all(platform: str, item_id: str, body: _TranslateBody) -> dict
 
 
 @app.get("/api/items/{platform}/{item_id}/translate-stream")
-def api_translate_stream(platform: str, item_id: str, engine: str | None = None) -> StreamingResponse:
+async def api_translate_stream(
+    platform: str, item_id: str, request: Request, engine: str | None = None,
+) -> StreamingResponse:
     """SSE-Stream fuer Bulk-Uebersetzung (Lisbeth NT-549 Pass 9 MEDIUM FUNCTIONAL).
 
     Liefert pro Zielsprache zwei Events: ``lang_start`` (vor dem Claude-CLI-
@@ -499,6 +501,13 @@ def api_translate_stream(platform: str, item_id: str, engine: str | None = None)
     EventSource ist GET-only, daher Query-Parameter statt Body. Wir benutzen
     die Default-Felder (alle uebersetzbaren Felder) — das ist die einzige
     Variante die das Bulk-Translate-Modal anbietet.
+
+    NT-550 Pass 13 (Lisbeth 10:23 MEDIUM FUNCTIONAL): zwischen den Sprachen
+    wird ``request.is_disconnected()`` geprueft. Wenn der Client den
+    EventSource bereits geschlossen hat (Modal-Close, ESC, Tab geschlossen),
+    bricht die Batch ab und sendet ein ``cancelled``-Event statt ``done``.
+    Die gerade laufende Sprache wird noch zu Ende uebersetzt (Claude-CLI
+    ist nicht abbrechbar), aber keine weitere Sprache wird mehr gestartet.
     """
     idir = _resolve_idir_with_meta(platform, item_id)
     meta = edit_ops.read_meta(idir)
@@ -517,14 +526,23 @@ def api_translate_stream(platform: str, item_id: str, engine: str | None = None)
     else:
         tx = None
 
-    def _gen():
+    async def _gen():
         def _evt(name: str, data: dict) -> str:
             return f"event: {name}\ndata: {json.dumps(data)}\n\n"
 
         yield _evt("start", {"n_total": len(target_langs), "langs": target_langs})
         n_ok = 0
         n_failed = 0
+        cancelled = False
         for lang in target_langs:
+            # NT-550 Pass 13: vor jeder Sprache pruefen ob Client noch da ist.
+            # Falls schon disconnected (Modal-Close): break, kein weiterer
+            # Claude-CLI-Aufruf. Die zuvor laufende Sprache ist bereits durch,
+            # eine eventuell aktuell laufende Sprache (im vorigen Loop-Iter)
+            # ebenfalls; aber alle nachfolgenden werden geschont.
+            if await request.is_disconnected():
+                cancelled = True
+                break
             yield _evt("lang_start", {"lang": lang})
             entry: dict = {"lang": lang}
             try:
@@ -548,7 +566,14 @@ def api_translate_stream(platform: str, item_id: str, engine: str | None = None)
                 entry.update({"ok": False, "error": str(e)})
                 n_failed += 1
             yield _evt("lang_done", entry)
-        yield _evt("done", {"n_ok": n_ok, "n_failed": n_failed, "n_total": len(target_langs)})
+        if cancelled:
+            n_remaining = len(target_langs) - n_ok - n_failed
+            yield _evt("cancelled", {
+                "n_ok": n_ok, "n_failed": n_failed,
+                "n_remaining": n_remaining, "n_total": len(target_langs),
+            })
+        else:
+            yield _evt("done", {"n_ok": n_ok, "n_failed": n_failed, "n_total": len(target_langs)})
 
     headers = {
         "Cache-Control": "no-cache",

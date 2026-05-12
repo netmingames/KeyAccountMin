@@ -745,6 +745,17 @@ async function openTranslateAllModal(it) {
       es = null;
       finalize();
     });
+    // NT-550 Pass 13: Server emittiert 'cancelled' wenn er nach
+    // request.is_disconnected() den Batch abbricht. Im Normalfall ist der
+    // Modal dann schon zu (user hat geschlossen), aber falls der Stream
+    // aus anderem Grund cancelled wird, sauber close + finalize. finalize
+    // ist NoOp wenn bt-summary weg.
+    es.addEventListener("cancelled", () => {
+      streamDone = true;
+      es.close();
+      es = null;
+      finalize();
+    });
     // NT-549 Pass 10 (Lisbeth 09:24 LOW FUNCTIONAL): es.onerror feuert auch
     // wenn der Stream VOR dem ersten lang_start failed oder zwischen Sprachen
     // (nach Reset von activeRow). Frueher haben wir errCount nur erhoeht wenn

@@ -149,20 +149,36 @@ async function renderContent() {
     </div>`;
     return;
   }
-  const [platform, itemId] = state.currentItemKey.split(":");
-  let it = state.itemCache[state.currentItemKey];
+  const key = state.currentItemKey;
+  const [platform, itemId] = key.split(":");
+  // NT-550/551 Pass 24 (Lisbeth 14:31 LOW + 14:33 MEDIUM FUNCTIONAL):
+  // renderContent() laeuft async und kann parallel feuern (onerror + close-
+  // Handler nacheinander, oder Tab-Wechsel waehrend laufendem fetch). Ohne
+  // Versionierung kann ein langsamerer Request den Cache mit veralteten
+  // Daten ueberschreiben, nachdem ein neuerer Request schon committed hat.
+  // Token-Schema: vor dem await wird der aktuelle Token gemerkt; nach dem
+  // await wird er gegen den aktuellen verglichen. Nur die neueste Iteration
+  // darf Cache + DOM aktualisieren.
+  state.renderTokens = state.renderTokens || {};
+  const token = (state.renderTokens[key] || 0) + 1;
+  state.renderTokens[key] = token;
+  const isCurrent = () => state.renderTokens[key] === token && state.currentItemKey === key;
+
+  let it = state.itemCache[key];
   if (!it) {
     // NT-549 Pass 4 (Lisbeth 15:10 LOW FUNCTIONAL): mit dem 422-Pfad fuer
     // schema-invalide meta/master.json kann GET /api/items/... jetzt non-200
     // sein. Vorher wurde response.ok ignoriert -> renderContent crasht beim
     // it.meta-Zugriff. Jetzt: Fehlerstatus -> graceful Card mit Detail.
     const r = await fetch(`/api/items/${platform}/${itemId}`);
+    if (!isCurrent()) return; // neuerer Aufruf ist drueber, abbrechen
     if (!r.ok) {
       let detail = `${r.status} ${r.statusText}`;
       try {
         const body = await r.json();
         if (body && body.detail) detail = body.detail;
       } catch (_) { /* nicht JSON */ }
+      if (!isCurrent()) return;
       main.innerHTML = `<div class="card">
         <h2>Item ${escapeHtml(platform)}/${escapeHtml(itemId)} nicht ladbar</h2>
         <p class="muted">${escapeHtml(String(detail))}</p>
@@ -170,7 +186,8 @@ async function renderContent() {
       return;
     }
     it = await r.json();
-    state.itemCache[state.currentItemKey] = it;
+    if (!isCurrent()) return;
+    state.itemCache[key] = it;
   }
   // Aktive Sprachen ohne Master
   const targetLangs = it.meta.active_languages.filter(l => l !== it.meta.master_lang);

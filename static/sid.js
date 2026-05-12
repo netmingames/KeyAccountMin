@@ -661,15 +661,24 @@ async function openTranslateAllModal(it) {
     stopStream();
     closeModal();
   });
-  // NT-558 Pass 12 ergaenzt (Lisbeth 09:48 LOW FUNCTIONAL): der HTML-<dialog>
-  // feuert auch dann ein 'close'-Event, wenn der User ESC drueckt oder die
-  // Bestaetigung anders kommt -- nicht nur ueber btn-bt-cancel. stopStream
-  // muss dann ebenfalls feuern, sonst laeuft der EventSource weiter und
-  // Callbacks dereferenzieren entfernte DOM-Knoten. once:true beschraenkt
-  // den Listener auf die naechste Modal-Close-Event-Iteration.
+  // NT-551 / NT-558 Pass 17 (Lisbeth 11:04 MEDIUM + 11:06 LOW FUNCTIONAL):
+  // Cache-Invalidation und Re-Render gehoeren in den close-Handler des
+  // <dialog>, nicht in finalize(). finalize() wird im cancel-Pfad NICHT
+  // gerufen (server schickt zwar 'cancelled', aber stopStream hat den
+  // EventSource zu dem Zeitpunkt schon zu — das Event kommt nicht beim
+  // Browser an). close-Event feuert dagegen bei jedem Close-Pfad:
+  //   - btn-bt-cancel -> closeModal() -> close event
+  //   - ESC am dialog -> close event
+  //   - startBtn nach finalize ("Schliessen") -> closeModal() -> close event
+  // Damit greift Cleanup einheitlich, unabhaengig davon ob der Run
+  // erfolgreich, abgebrochen oder ESC'd wurde.
   document.getElementById("modal").addEventListener(
     "close",
-    () => stopStream(),
+    () => {
+      stopStream();
+      delete state.itemCache[state.currentItemKey];
+      renderContent();
+    },
     { once: true },
   );
   // NT-550 Pass 11 (Lisbeth 09:36 MEDIUM FUNCTIONAL): Der Start-Handler wird
@@ -709,19 +718,10 @@ async function openTranslateAllModal(it) {
       // als auch den alten addEventListener-Handler (start neuer Batch).
       startCtrl.abort();
       startBtn.onclick = closeModal;
-      // NT-558 Pass 15 (Lisbeth 10:44 LOW FUNCTIONAL): cleanup nach
-      // erfolgreichem Run muss auch greifen, wenn der User das Modal via
-      // ESC schliesst statt auf "Schliessen" zu klicken. close-Event vom
-      // <dialog> feuert in beiden Faellen, plus bei click ausserhalb des
-      // Modals. once:true verhindert doppelte Ausfuehrung.
-      document.getElementById("modal").addEventListener(
-        "close",
-        () => {
-          delete state.itemCache[state.currentItemKey];
-          renderContent();
-        },
-        { once: true },
-      );
+      // NT-551 Pass 17: Cache-Cleanup ist jetzt im open-time close-Listener
+      // (siehe oben). Der ehemalige finalize-time Listener wurde entfernt,
+      // weil er im cancel-Pfad nicht feuert (stopStream schliesst Stream,
+      // server-cancelled-Event kommt nie an, finalize laeuft nicht).
     };
     es = new EventSource(`/api/items/${platform}/${itemId}/translate-stream`);
     es.addEventListener("start", (ev) => {

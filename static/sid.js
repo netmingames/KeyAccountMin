@@ -708,11 +708,20 @@ async function openTranslateAllModal(it) {
       // wird. Sonst feuert ein Klick auf "Schliessen" sowohl onclick (close)
       // als auch den alten addEventListener-Handler (start neuer Batch).
       startCtrl.abort();
-      startBtn.onclick = () => {
-        closeModal();
-        delete state.itemCache[state.currentItemKey];
-        renderContent();
-      };
+      startBtn.onclick = closeModal;
+      // NT-558 Pass 15 (Lisbeth 10:44 LOW FUNCTIONAL): cleanup nach
+      // erfolgreichem Run muss auch greifen, wenn der User das Modal via
+      // ESC schliesst statt auf "Schliessen" zu klicken. close-Event vom
+      // <dialog> feuert in beiden Faellen, plus bei click ausserhalb des
+      // Modals. once:true verhindert doppelte Ausfuehrung.
+      document.getElementById("modal").addEventListener(
+        "close",
+        () => {
+          delete state.itemCache[state.currentItemKey];
+          renderContent();
+        },
+        { once: true },
+      );
     };
     es = new EventSource(`/api/items/${platform}/${itemId}/translate-stream`);
     es.addEventListener("start", (ev) => {

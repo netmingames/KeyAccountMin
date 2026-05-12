@@ -568,7 +568,10 @@ def api_download_export(platform: str, item_id: str, filename: str):
 @app.get("/api/items/{platform}/{item_id}/ea-status")
 def api_ea_status(platform: str, item_id: str) -> dict:
     """Liefert Liste der aktiven Sprachen mit EA-Feld-Fuellstand."""
-    idir = _resolve_idir(platform, item_id)
+    # Lisbeth NT-549 Pass 8 (16:33 MEDIUM FUNCTIONAL): meta-Validierung
+    # via _resolve_idir_with_meta, sonst bubbeln korrupte/legacy meta.json
+    # als 500 in ea_exporter.list_ea_languages.
+    idir = _resolve_idir_with_meta(platform, item_id)
     return {"languages": ea_exporter.list_ea_languages(idir)}
 
 
@@ -577,7 +580,8 @@ def api_ea_export_text(platform: str, item_id: str, lang: str):
     """Liefert die EA-Q&A-Texte einer Sprache als Plaintext-Download."""
     if not steam_codes.is_valid(lang):
         raise HTTPException(status_code=400, detail=f"Unbekannter Steam-Sprachcode: {lang}")
-    idir = _resolve_idir(platform, item_id)
+    # Lisbeth NT-549 Pass 8 (16:33 MEDIUM FUNCTIONAL): wie ea-status.
+    idir = _resolve_idir_with_meta(platform, item_id)
     text = ea_exporter.render_ea_text(idir, lang)
     filename = ea_exporter.filename_for_lang(idir, lang)
     from fastapi.responses import Response
@@ -591,7 +595,8 @@ def api_ea_export_text(platform: str, item_id: str, lang: str):
 @app.get("/api/items/{platform}/{item_id}/ea-export.zip")
 def api_ea_export_zip(platform: str, item_id: str):
     """Sammel-ZIP mit allen aktiven Sprachen als .txt-Dateien + README."""
-    idir = _resolve_idir(platform, item_id)
+    # Lisbeth NT-549 Pass 8 (16:33 MEDIUM FUNCTIONAL): wie ea-status.
+    idir = _resolve_idir_with_meta(platform, item_id)
     try:
         data = ea_exporter.export_ea_bundle_zip(idir)
     except ValueError as e:

@@ -785,6 +785,14 @@ async function openTranslateAllModal(it) {
       const remaining = Math.max(0, totalLangs - okCount - errCount);
       errCount += remaining;
       finalize();
+      // NT-549 Pass 23 (Lisbeth 14:00 LOW FUNCTIONAL): onerror laesst das
+      // Modal offen, damit der User die NETZWERK-Zeile + Summary sieht.
+      // Aber: Main-View muss trotzdem frisch -- vielleicht sind schon
+      // einige Translations gelandet. Cache invalidate + renderContent
+      // SOFORT, parallel zum offenen Modal. Idempotent zum spaeteren
+      // close-Handler-cleanup wenn der User schliesst.
+      delete state.itemCache[state.currentItemKey];
+      renderContent();
     };
   }, { signal: startCtrl.signal });
 }

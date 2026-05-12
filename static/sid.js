@@ -666,6 +666,12 @@ async function openTranslateAllModal(it) {
   // (bt-summary, btn-bt-start) und ein Restart konnte parallel laufen.
   let es = null;
   let streamDone = false;
+  // NT-551 Pass 25 (Lisbeth 14:45 MEDIUM FUNCTIONAL): cleanFresh markiert,
+  // dass der Stream sauber durch das 'done'-Event beendet wurde -- also
+  // alle asyncio.to_thread-Worker fertig geschrieben haben. Nur dann ist
+  // ein renderContent() race-frei. Bei cancel/onerror laufen evtl. noch
+  // background-threads -> nur Cache leeren, kein render.
+  let cleanFresh = false;
   const stopStream = () => {
     if (es && !streamDone) {
       streamDone = true;
@@ -678,18 +684,23 @@ async function openTranslateAllModal(it) {
     stopStream();
     closeModal();
   });
-  // NT-549 Pass 22 (Lisbeth 13:50 LOW FUNCTIONAL): cleanup auf JEDEN
-  // Terminal-Pfad (done, cancelled, onerror, ESC-Close, click outside) --
-  // nicht nur success. Auch bei Abbruch koennen schon Translations
-  // geschrieben sein, der User soll den Stand sehen ohne manual Reload.
-  // close-Event vom <dialog> feuert auf allen Pfaden genau einmal
-  // (once:true), das ist die einzige zentrale Stelle die cleanup macht.
+  // NT-551 Pass 25 (Lisbeth 14:45 MEDIUM FUNCTIONAL): close-Handler darf
+  // renderContent() NUR aufrufen wenn der Stream durch ein 'done'-Event
+  // beendet wurde (cleanFresh=true). Bei cancel/onerror koennten noch
+  // asyncio.to_thread-Worker auf das fs schreiben -- ein sofortiger
+  // fetch wuerde stale Daten cachen.
+  //
+  // Cache wird IMMER invalidiert (kostet nichts), damit der naechste
+  // user-getriggerte renderContent (Tab-Wechsel, manueller Reload) frisch
+  // lädt -- dann sind die background-writes garantiert durch.
   document.getElementById("modal").addEventListener(
     "close",
     () => {
       stopStream();
       delete state.itemCache[state.currentItemKey];
-      renderContent();
+      if (cleanFresh) {
+        renderContent();
+      }
     },
     { once: true },
   );
@@ -764,9 +775,9 @@ async function openTranslateAllModal(it) {
       streamDone = true;
       es.close();
       es = null;
-      // NT-549 Pass 22: cleanup wandert komplett in den close-Handler --
-      // hier nur finalize() (UI-Update "Fertig"-Anzeige). User klickt
-      // dann auf "Schliessen", close-Event feuert, cache wird invalidated.
+      // NT-551 Pass 25: nur bei done-Event sind alle Worker-Threads fertig
+      // geschrieben. cleanFresh=true erlaubt dem close-Handler renderContent().
+      cleanFresh = true;
       finalize();
     });
     // NT-550 Pass 13: Server emittiert 'cancelled' wenn er nach
@@ -802,14 +813,11 @@ async function openTranslateAllModal(it) {
       const remaining = Math.max(0, totalLangs - okCount - errCount);
       errCount += remaining;
       finalize();
-      // NT-549 Pass 23 (Lisbeth 14:00 LOW FUNCTIONAL): onerror laesst das
-      // Modal offen, damit der User die NETZWERK-Zeile + Summary sieht.
-      // Aber: Main-View muss trotzdem frisch -- vielleicht sind schon
-      // einige Translations gelandet. Cache invalidate + renderContent
-      // SOFORT, parallel zum offenen Modal. Idempotent zum spaeteren
-      // close-Handler-cleanup wenn der User schliesst.
+      // NT-551 Pass 25: onerror laesst Worker-Threads evtl. noch arbeiten.
+      // Cache invalidieren ok (kostet nichts), aber KEIN renderContent --
+      // das wuerde race mit Worker-Writes. User klickt naechstes Mal
+      // auf das Item -> garantiert frische Daten.
       delete state.itemCache[state.currentItemKey];
-      renderContent();
     };
   }, { signal: startCtrl.signal });
 }

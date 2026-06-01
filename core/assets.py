@@ -497,16 +497,18 @@ def translate_screenshot_captions(
     target_langs: list[str],
     translate_fn,
     overwrite_existing: bool = False,
-) -> dict[str, str]:
+) -> tuple[dict[str, str], dict[str, str]]:
     """Uebersetzt master_caption fuer einen Screenshot in die `target_langs`.
 
-    NT-564 Pass 2 (Lisbeth 17:17 MEDIUM FUNCTIONAL): captions waren bisher
-    nicht an die Uebersetzungs-Pipeline angebunden — master_caption wurde
-    nur gesetzt, captions blieben leer und der ZIP-Export fiel fuer jede
-    Sprache auf den Master-Text zurueck. Diese Funktion ist der Wiring-
-    Punkt: app.py reicht eine translate_fn(lang, text) -> str rein (per
-    Default die Claude-CLI-Engine), wir loopen ueber die Sprachen und
-    schreiben das Ergebnis in shot.captions[lang].
+    NT-564 Pass 2: Wiring an die Translation-Pipeline (callable
+    translate_fn(lang, text) -> str). NT-563 Pass 4 (Lisbeth 17:45 MEDIUM
+    FUNCTIONAL): Vorher hat die erste fehlschlagende Sprache den gesamten
+    Batch abgebrochen und bereits uebersetzte captions wurden nicht
+    persistiert (save_manifest lief nur am Ende). Jetzt: pro Sprache
+    eigenes try/except, Fehler landen im errors-Dict, der Rest des Batches
+    laeuft durch, am Ende wird IMMER save_manifest aufgerufen (auch wenn
+    written leer ist und nur errors vorliegen — falls schon vor diesem
+    Aufruf Manifest-Zustand mutiert wurde, bleibt der konsistent).
 
     Parameter:
       target_langs       liste echter Steam-Sprachcodes (master_lang muss
@@ -517,28 +519,34 @@ def translate_screenshot_captions(
                          gefuellt, manuelle Edits bleiben unangetastet.
                          True               -> alle target_langs ueberschreiben.
 
-    Rueckgabe: dict {lang: uebersetzter_text} mit den tatsaechlich
-    geschriebenen Werten (uebersprungene Sprachen fehlen).
+    Rueckgabe: Tuple (written, errors).
+      written  dict {lang: uebersetzter_text} fuer Erfolg.
+      errors   dict {lang: fehlertext} fuer Sprachen die fehlgeschlagen sind.
     """
     manifest = load_manifest(idir)
     shot = _find_shot(manifest, shot_id)
     master = (shot.master_caption or "").strip()
     if not master:
-        return {}
+        return {}, {}
     written: dict[str, str] = {}
+    errors: dict[str, str] = {}
     for lang in target_langs:
         if not steam_codes.is_valid(lang):
             raise ValueError(f"Unbekannte Sprache: {lang!r}")
         if not overwrite_existing and shot.captions.get(lang, "").strip():
             continue
-        translated = translate_fn(lang, master)
+        try:
+            translated = translate_fn(lang, master)
+        except Exception as e:
+            errors[lang] = str(e) or e.__class__.__name__
+            continue
         if translated is None:
             continue
         shot.captions[lang] = str(translated)
         written[lang] = str(translated)
     if written:
         save_manifest(idir, manifest)
-    return written
+    return written, errors
 
 
 def reorder_screenshots(idir: Path, ordered_ids: list[int]) -> list[Screenshot]:

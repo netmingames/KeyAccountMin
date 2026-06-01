@@ -271,13 +271,14 @@ def test_translate_screenshot_captions_skips_filled(tmp_path: Path) -> None:
     def fake_tx(lang: str, text: str) -> str:
         calls.append((lang, text))
         return f"[{lang}] {text}"
-    written = assets.translate_screenshot_captions(
+    written, errors = assets.translate_screenshot_captions(
         idir, shot.id,
         target_langs=["english", "french"],
         translate_fn=fake_tx,
     )
     assert "english" not in written            # manuelle caption bleibt
     assert written["french"] == "[french] Tor!"
+    assert errors == {}
     assert calls == [("french", "Tor!")]       # english nicht aufgerufen
     m = assets.load_manifest(idir)
     sh = next(s for s in m.screenshots if s.id == shot.id)
@@ -291,13 +292,14 @@ def test_translate_screenshot_captions_overwrite(tmp_path: Path) -> None:
     w, h = assets.SCREENSHOT_TARGET
     shot = assets.add_screenshot(idir, _jpg(w, h), ext="jpg", master_caption="Tor!")
     assets.set_screenshot_caption(idir, shot.id, "Old", lang="english")
-    written = assets.translate_screenshot_captions(
+    written, errors = assets.translate_screenshot_captions(
         idir, shot.id,
         target_langs=["english"],
         translate_fn=lambda l, t: f"[{l}] {t}",
         overwrite_existing=True,
     )
     assert written["english"] == "[english] Tor!"
+    assert errors == {}
     m = assets.load_manifest(idir)
     sh = next(s for s in m.screenshots if s.id == shot.id)
     assert sh.captions["english"] == "[english] Tor!"
@@ -309,13 +311,62 @@ def test_translate_screenshot_captions_empty_master(tmp_path: Path) -> None:
     w, h = assets.SCREENSHOT_TARGET
     shot = assets.add_screenshot(idir, _jpg(w, h), ext="jpg")
     called = []
-    written = assets.translate_screenshot_captions(
+    written, errors = assets.translate_screenshot_captions(
         idir, shot.id,
         target_langs=["english", "french"],
         translate_fn=lambda l, t: called.append(l) or "X",
     )
     assert written == {}
+    assert errors == {}
     assert called == []
+
+
+def test_translate_screenshot_captions_partial_failure(tmp_path: Path) -> None:
+    """NT-563 Pass 4 (Lisbeth 17:45 MEDIUM FUNCTIONAL): eine fehlschlagende
+    Sprache darf den restlichen Batch nicht abbrechen, erfolgreiche
+    Uebersetzungen muessen persistiert werden."""
+    idir = _item(tmp_path)
+    w, h = assets.SCREENSHOT_TARGET
+    shot = assets.add_screenshot(idir, _jpg(w, h), ext="jpg", master_caption="Tor!")
+    seen: list[str] = []
+    def flaky_tx(lang: str, text: str) -> str:
+        seen.append(lang)
+        if lang == "french":
+            raise RuntimeError("translator boom")
+        return f"[{lang}] {text}"
+    written, errors = assets.translate_screenshot_captions(
+        idir, shot.id,
+        target_langs=["english", "french", "italian"],
+        translate_fn=flaky_tx,
+    )
+    # english + italian erfolgreich, french im errors-Dict
+    assert written == {"english": "[english] Tor!", "italian": "[italian] Tor!"}
+    assert list(errors.keys()) == ["french"]
+    assert "boom" in errors["french"]
+    # Alle drei Sprachen wurden versucht (kein early-abort)
+    assert seen == ["english", "french", "italian"]
+    # Erfolgreiche captions persistiert
+    m = assets.load_manifest(idir)
+    sh = next(s for s in m.screenshots if s.id == shot.id)
+    assert sh.captions["english"] == "[english] Tor!"
+    assert sh.captions["italian"] == "[italian] Tor!"
+    assert "french" not in sh.captions
+
+
+def test_translate_screenshot_captions_all_fail(tmp_path: Path) -> None:
+    """Alle Sprachen schlagen fehl -> written leer, errors voll, kein Crash."""
+    idir = _item(tmp_path)
+    w, h = assets.SCREENSHOT_TARGET
+    shot = assets.add_screenshot(idir, _jpg(w, h), ext="jpg", master_caption="Tor!")
+    def always_fail(lang: str, text: str) -> str:
+        raise RuntimeError(f"down {lang}")
+    written, errors = assets.translate_screenshot_captions(
+        idir, shot.id,
+        target_langs=["english", "french"],
+        translate_fn=always_fail,
+    )
+    assert written == {}
+    assert set(errors.keys()) == {"english", "french"}
 
 
 def test_delete_screenshot_override(tmp_path: Path) -> None:

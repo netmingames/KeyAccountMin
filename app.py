@@ -939,7 +939,7 @@ def api_translate_screenshot_captions(
         return out.get("caption")
 
     try:
-        written = assets.translate_screenshot_captions(
+        written, errors = assets.translate_screenshot_captions(
             idir, shot_id,
             target_langs=target_langs,
             translate_fn=translate_one,
@@ -947,7 +947,13 @@ def api_translate_screenshot_captions(
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    return {"ok": True, "shot_id": shot_id, "written": written, "engine": tx.name}
+    return {
+        "ok": True,
+        "shot_id": shot_id,
+        "written": written,
+        "errors": errors,
+        "engine": tx.name,
+    }
 
 
 @app.get("/api/items/{platform}/{item_id}/assets/screenshots/{shot_id}/file")
@@ -1001,7 +1007,12 @@ async def api_upload_asset(
 
 @app.get("/api/items/{platform}/{item_id}/assets/{slot}/file")
 def api_asset_file(platform: str, item_id: str, slot: str, lang: str | None = None):
-    idir = _resolve_idir(platform, item_id)
+    # NT-563 Pass 4 (Lisbeth 17:45 LOW FUNCTIONAL): vorher _resolve_idir() ohne
+    # meta-Pruefung — legacy/malformed items konnten Asset-Binaerdaten ueber
+    # /assets/{slot}/file ausliefern, obwohl die uebrigen Asset-Routen den
+    # Item-Status bereits ablehnen. Konsistent mit upload/delete/status nun
+    # _resolve_idir_with_meta().
+    idir = _resolve_idir_with_meta(platform, item_id)
     try:
         p = assets.resolve_asset(idir, slot, lang)
     except ValueError as e:

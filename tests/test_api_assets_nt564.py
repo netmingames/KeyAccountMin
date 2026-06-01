@@ -284,6 +284,54 @@ def test_reorder_endpoint_rejects_duplicates(client_and_item) -> None:
     assert r.status_code == 400
 
 
+def test_asset_file_route_uses_meta_pruefung(client_and_item) -> None:
+    """NT-563 Pass 4 (Lisbeth 17:45 LOW FUNCTIONAL): /assets/{slot}/file
+    nutzt jetzt _resolve_idir_with_meta wie der Rest der Asset-API; ohne
+    Meta-Datei wird 404 zurueckgeliefert statt Binaerdaten."""
+    client, _ = client_and_item
+    # nicht existierendes Item -> 404 (statt 200 Binaerdaten/500)
+    r = client.get("/api/items/steam/9999999/assets/header_capsule/file")
+    assert r.status_code == 404
+
+
+def test_translate_captions_partial_failure(client_and_item, monkeypatch) -> None:
+    """NT-563 Pass 4 (Lisbeth 17:45 MEDIUM FUNCTIONAL): wenn eine Sprache im
+    Translator scheitert, laeuft der Rest des Batches durch, erfolgreiche
+    captions sind persistiert, errors-Dict wird zurueckgeliefert."""
+    import app as app_mod
+    import core.translator as translator_mod
+
+    client, _ = client_and_item
+
+    class FlakyTranslator:
+        name = "flaky"
+        def translate_lang(self, *, master_fields, lang_code, **kw):
+            if lang_code == "french":
+                raise translator_mod.TranslationError("translator boom")
+            return {k: f"[{lang_code.upper()}] {v}" for k, v in master_fields.items()}
+
+    monkeypatch.setattr(translator_mod, "ClaudeCliTranslator", lambda: FlakyTranslator())
+
+    add = client.post(
+        "/api/items/steam/1141975/assets/screenshots",
+        files={"file": ("a.jpg", _jpg(1920, 1080), "image/jpeg")},
+        data={"master_caption": "Tor!"},
+    )
+    sid = add.json()["screenshot"]["id"]
+
+    r = client.post(
+        f"/api/items/steam/1141975/assets/screenshots/{sid}/translate-captions",
+        json={"engine": "claude-cli", "target_langs": ["english", "french"]},
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    # english durchgelaufen, french im errors-Dict
+    assert "english" in body["written"]
+    assert body["written"]["english"].startswith("[ENGLISH]")
+    assert "french" in body["errors"]
+    assert "boom" in body["errors"]["french"]
+
+
 def test_translate_captions_overwrite_flag(client_and_item) -> None:
     """overwrite_existing=true ueberschreibt manuelle captions."""
     client, _ = client_and_item

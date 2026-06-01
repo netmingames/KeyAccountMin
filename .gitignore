@@ -29,3 +29,5 @@ data/**/exports/*.json
 .env
 .env.local
 config.local.yaml
+sid.log
+sid.log.err

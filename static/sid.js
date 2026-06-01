@@ -276,7 +276,10 @@ function renderInhalt(it, targetLangs) {
   const inactiveLangs = state.languages.map(l => l.code).filter(c => !activeSet.has(c));
   // NT-568 (Lisbeth 19:42): Master-Content-Feldzahl fuer uniformen 0/N-Fuellstand
   // der inaktiven Sprachen (sie haben naturgemaess 0 uebersetzt).
-  const nContent = Object.values(it.master.fields || {}).filter(v => v && String(v).trim()).length;
+  // NT-568 (Lisbeth 20:14): identische 'content'-Definition wie das Backend
+  // (api_get_item nutzt `if v` = truthy). Kein .trim() -> Whitespace-only zaehlt
+  // hier genauso als Content wie in der API, sonst weichen Fuellstaende ab.
+  const nContent = Object.values(it.master.fields || {}).filter(v => v).length;
   const langOverview = (targetLangs.length || inactiveLangs.length) ? `
     <div class="lang-overview">
       <span class="muted">Aktiv (${targetLangs.length}):</span>
@@ -293,7 +296,9 @@ function renderInhalt(it, targetLangs) {
         // NT-568 (Lisbeth 20:03): hat eine inaktive Sprache schon eine Translation-
         // Datei (Daten bleiben beim Deaktivieren erhalten), echten Fuellstand zeigen.
         const si = it.translations[code];
-        const fi = (si && si.total) ? `${si.filled}/${si.total}` : `0/${nContent}`;
+        // NT-568 (Lisbeth 20:14): si.total != null statt truthy — sonst wuerde
+        // ein valides total:0 faelschlich auf 0/nContent zurueckfallen statt 0/0.
+        const fi = (si && si.total != null) ? `${si.filled}/${si.total}` : `0/${nContent}`;
         return `<button class="lang-pill inactive" data-lang-activate="${code}" title="${escapeHtml(state.langByCode[code]?.display || code)} — inaktiv (${fi} uebersetzt), klick zum Aktivieren">${escapeHtml(state.langByCode[code]?.iso || code)} <span class="muted">${fi} · inaktiv</span></button>`;
       }).join("") : ""}
     </div>` : "";

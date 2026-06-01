@@ -835,8 +835,19 @@ function bindGrafikenHandlers(it) {
       );
       b.disabled = false;
       if (res !== null) {
-        const n = Object.keys(res.written || {}).length;
-        showToast(n ? `${n} Caption(s) uebersetzt (${res.engine})` : "Keine Sprache zu uebersetzen", n ? "ok" : "error");
+        // NT-563/565: errors-Payload sichtbar machen — Teil-/Komplettausfaelle
+        // duerfen nicht als Erfolg getarnt werden.
+        const written = Object.keys(res.written || {}).length;
+        const errs = res.errors || {};
+        const nErr = Object.keys(errs).length;
+        if (nErr) {
+          const detail = Object.entries(errs).map(([l, e]) => `${l}: ${e}`).join("; ");
+          showToast(`${written} Caption(s) uebersetzt, ${nErr} fehlgeschlagen — ${detail}`, "error");
+        } else if (written) {
+          showToast(`${written} Caption(s) uebersetzt (${res.engine})`, "ok");
+        } else {
+          showToast("Keine Sprache zu uebersetzen", "ok");
+        }
         await reload();
       }
     });

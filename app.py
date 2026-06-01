@@ -918,7 +918,12 @@ def api_translate_screenshot_captions(
     else:
         tx = translator.get_translator()
 
-    g = glossary_mod.load(idir)
+    # NT-563 (Lisbeth 18:03 LOW FUNCTIONAL): glossary.json kontrolliert laden —
+    # ein korruptes Glossar darf nicht als 500 durchschlagen, sondern als 422.
+    try:
+        g = glossary_mod.load(idir)
+    except (json.JSONDecodeError, OSError, UnicodeDecodeError, ValidationError) as e:
+        raise HTTPException(status_code=422, detail=f"glossary.json unlesbar: {e}")
     glossary_block = glossary_mod.to_prompt_block(g)
 
     def translate_one(lang: str, text: str) -> str | None:
@@ -968,17 +973,22 @@ def api_screenshot_file(platform: str, item_id: str, shot_id: int, lang: str | N
     shot = next((s for s in manifest.screenshots if s.id == shot_id), None)
     if shot is None:
         raise HTTPException(status_code=404, detail=f"Screenshot {shot_id} nicht gefunden")
+    # NT-564/565 (Lisbeth 18:16/18:22 LOW FUNCTIONAL): gleiche stale-Override-
+    # Fallback-Semantik wie resolve_asset()/export_zip(). Ein verwaister
+    # Per-Sprache-Override (Manifest-Eintrag da, Datei weg) faellt auf das
+    # Default-Bild zurueck statt 404 — sonst bricht die Vorschau fuer Items,
+    # die der Rest der Asset-Logik als wiederherstellbar behandelt.
+    sdir = idir / "assets" / "screenshots"
     entry = None
     if lang and lang != assets.DEFAULT_KEY:
-        entry = shot.localized.get(lang)
-    if entry is None:
+        ov = shot.localized.get(lang)
+        if ov is not None and (sdir / ov.filename).exists():
+            entry = ov
+    if entry is None and shot.default is not None and (sdir / shot.default.filename).exists():
         entry = shot.default
     if entry is None:
         raise HTTPException(status_code=404, detail="Kein Bild fuer diesen Screenshot")
-    p = idir / "assets" / "screenshots" / entry.filename
-    if not p.exists():
-        raise HTTPException(status_code=404, detail="Bilddatei fehlt")
-    return FileResponse(p)
+    return FileResponse(sdir / entry.filename)
 
 
 @app.delete("/api/items/{platform}/{item_id}/assets/screenshots/{shot_id}")

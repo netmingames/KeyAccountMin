@@ -605,6 +605,12 @@ def get_screenshot_details(idir: Path, shot_id: int) -> dict:
     shot = next((s for s in manifest.screenshots if s.id == shot_id), None)
     if shot is None:
         raise ValueError(f"Screenshot {shot_id} nicht gefunden")
+    # NT-564 Pass 6 (Lisbeth 18:16 LOW FUNCTIONAL): nur Overrides melden, deren
+    # DATEI wirklich existiert. Ein verwaister Eintrag (Datei weg) wuerde sonst
+    # als aktiver Override erscheinen, obwohl resolve_asset()/export_zip() laengst
+    # auf default zurueckfallen — das Modal soll konsistent dazu sein.
+    sdir = _assets_dir(idir) / "screenshots"
+    present = {lang: af for lang, af in shot.localized.items() if (sdir / af.filename).exists()}
     return {
         "id": shot.id,
         "order": shot.order,
@@ -612,11 +618,10 @@ def get_screenshot_details(idir: Path, shot_id: int) -> dict:
         "captions": dict(shot.captions),
         "has_default": shot.default is not None,
         "default_size_ok": shot.default.size_ok if shot.default else None,
-        "has_override": {lang: True for lang in shot.localized.keys()},
-        # NT-564 Pass 5 (Lisbeth 17:56 LOW FUNCTIONAL): pro Override die Maß-/
-        # Format-Validierung mitliefern, damit das Per-Sprache-Modal einen
-        # falsch dimensionierten Screenshot-Override sichtbar machen kann
-        # (vorher nur has_override=True, ein zu kleines Bild war nicht erkennbar).
+        "has_override": {lang: True for lang in present},
+        # NT-564 Pass 5: pro Override die Maß-/Format-Validierung mitliefern,
+        # damit das Per-Sprache-Modal einen falsch dimensionierten Screenshot-
+        # Override sichtbar machen kann.
         "overrides": {
             lang: {
                 "size_ok": af.size_ok,
@@ -624,7 +629,7 @@ def get_screenshot_details(idir: Path, shot_id: int) -> dict:
                 "width": af.width,
                 "height": af.height,
             }
-            for lang, af in shot.localized.items()
+            for lang, af in present.items()
         },
     }
 
@@ -681,16 +686,22 @@ def status(idir: Path, active_langs: list[str]) -> dict:
             # Grafiken-Tab das rote Maß-Badge auch fuer Per-Sprache-
             # Uploads anzeigen kann. Wert pro Sprache ist jetzt ein
             # Dict statt String — siehe sid.js (info.mode).
+            # NT-563/564 (Lisbeth 18:03/18:16 LOW FUNCTIONAL): override nur
+            # melden, wenn die Override-DATEI wirklich existiert. Ein verwaister
+            # Manifest-Eintrag (Datei geloescht) faellt wie in resolve_asset()
+            # auf default zurueck — sonst zeigt der Grafiken-Tab tote Override-
+            # Chips/Counts, die nicht mit dem echten Export uebereinstimmen.
+            slot_dir = _assets_dir(idir) / slot.key
             per_lang: dict[str, dict[str, Any]] = {}
             for lang in langs:
                 ov = st.localized.get(lang)
-                if ov is not None:
+                if ov is not None and (slot_dir / ov.filename).exists():
                     per_lang[lang] = {
                         "mode": "override",
                         "size_ok": ov.size_ok,
                         "warnings": list(ov.warnings),
                     }
-                elif st.default is not None:
+                elif st.default is not None and (slot_dir / st.default.filename).exists():
                     per_lang[lang] = {
                         "mode": "default",
                         "size_ok": st.default.size_ok,

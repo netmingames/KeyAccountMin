@@ -629,3 +629,39 @@ dialog#modal::backdrop {
 .shot-caption.saved { border-color: var(--ok); transition: border-color 0.4s; }
 .shot-actions { display: flex; gap: 0.3rem; }
 .shot-actions .del { color: var(--stale); }
+
+/* --- NT-568: Alle-Sprachen-Uebersicht + Auswahl ------------------------- */
+
+.lang-overview {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+  margin: 0 0 1rem;
+  padding: 0.5rem 0.7rem;
+  background: var(--card);
+  border-radius: 8px;
+}
+.lang-pill {
+  appearance: none;
+  background: var(--card-soft);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 0.2rem 0.6rem;
+  font-size: 0.82em;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  white-space: nowrap;
+}
+.lang-pill:hover { border-color: var(--accent); }
+.lang-pill.active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.lang-pill .flag { font-size: 0.9em; }
+
+.bt-select-buttons { display: flex; gap: 0.4rem; margin-bottom: 0.5rem; }

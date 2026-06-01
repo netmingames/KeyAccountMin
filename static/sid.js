@@ -263,6 +263,22 @@ function renderInhalt(it, targetLangs) {
       <a class="btn small primary" href="/api/items/${it.meta.platform}/${it.meta.item_id}/ea-export.zip" download>📦 Alle Sprachen als ZIP</a>
     </div>`;
 
+  // NT-568: Alle-Sprachen-Uebersicht — bisher sah man nur die Dropdown-Auswahl,
+  // nicht den Gesamtstand. Jede aktive Zielsprache als klickbares Pill mit
+  // Fuellstand (gefuellt/gesamt) + stale-/manuell-Badges.
+  const langOverview = targetLangs.length ? `
+    <div class="lang-overview">
+      <span class="muted">Sprachen:</span>
+      ${targetLangs.map(code => {
+        const s = it.translations[code] || {};
+        const fill = (s.filled != null && s.total != null) ? `${s.filled}/${s.total}` : "";
+        const staleB = s.stale > 0 ? ` <span class="flag stale">${s.stale}</span>` : "";
+        const manB = s.manually_edited > 0 ? ` <span class="flag manual">${s.manually_edited}✎</span>` : "";
+        const act = code === state.currentTargetLang ? " active" : "";
+        return `<button class="lang-pill${act}" data-lang-pill="${code}" title="${escapeHtml(state.langByCode[code]?.display || code)}">${escapeHtml(state.langByCode[code]?.iso || code)} <span class="muted">${fill}</span>${staleB}${manB}</button>`;
+      }).join("")}
+    </div>` : "";
+
   return `
     <section class="card item-header">
       <h2>${escapeHtml(it.meta.name)} <span class="muted">#${it.meta.item_id} · ${it.meta.platform}</span></h2>
@@ -274,6 +290,7 @@ function renderInhalt(it, targetLangs) {
         ${eaToggle}
       </div>
     </section>
+    ${langOverview}
     ${renderFieldGroup(standardFields, "Inhalt")}
     ${it.meta.early_access ? renderFieldGroup(eaFields, "Early Access (Q&A)", eaHeader) : ""}
   `;
@@ -338,6 +355,15 @@ function bindInhaltHandlers(it) {
     delete state.itemCache[state.currentItemKey]; // Translations-Summary neu laden
     await renderContent();
   });
+
+  // NT-568: Klick auf ein Sprach-Pill der Uebersicht wechselt die Zielsprache.
+  for (const pill of document.querySelectorAll("[data-lang-pill]")) {
+    pill.addEventListener("click", async () => {
+      state.currentTargetLang = pill.dataset.langPill;
+      delete state.itemCache[state.currentItemKey];
+      await renderContent();
+    });
+  }
 
   const langsInline = document.getElementById("btn-langs-inline");
   if (langsInline) langsInline.addEventListener("click", () => openLanguagesModal());
@@ -1148,19 +1174,34 @@ async function openTranslateAllModal(it) {
   const itemId = it.meta.item_id;
   const targetLangs = it.meta.active_languages.filter(l => l !== it.meta.master_lang);
 
+  // NT-568: Sprachauswahl statt pauschal. Vorausgewaehlt sind die Sprachen mit
+  // veralteten/leeren Feldern (stale > 0).
   const langRows = targetLangs.map(code => {
     const l = state.langByCode[code];
+    const s = it.translations[code] || {};
+    const needs = (s.stale || 0) > 0;
+    const info = (s.filled != null && s.total != null)
+      ? `${s.filled}/${s.total}${s.stale ? `, ${s.stale} stale` : ""}` : "";
     return `<tr data-lang="${code}">
-      <td>${escapeHtml(l?.display || code)} <span class="muted">${escapeHtml(l?.iso || code)}</span></td>
+      <td><label class="checkbox-line"><input type="checkbox" class="bt-lang" value="${code}" ${needs ? "checked" : ""}>
+        ${escapeHtml(l?.display || code)} <span class="muted">${escapeHtml(l?.iso || code)}${info ? " · " + info : ""}</span></label></td>
       <td class="status muted">wartet ...</td>
     </tr>`;
   }).join("");
 
   showModal(`
-    <h2>Alle Sprachen uebersetzen</h2>
-    <p class="muted">${targetLangs.length} aktive Zielsprachen werden sequenziell uebersetzt.
-    Manuell editierte Felder bleiben unangetastet. Pro Sprache ein Claude-CLI-Aufruf
-    (~30s pro Sprache) — das kann ein paar Minuten dauern.</p>
+    <h2>Sprachen uebersetzen</h2>
+    <p class="muted">Waehle die Zielsprachen. Manuell editierte Felder bleiben immer
+    unangetastet. Pro Sprache ein Claude-CLI-Aufruf (~30s) — das kann dauern.</p>
+    <label class="checkbox-line" style="margin-bottom:.5rem">
+      <input type="checkbox" id="bt-only-stale" checked>
+      Nur leere/veraltete Felder <span class="muted">(aus = ALLES neu, ueberschreibt vorhandene Auto-Uebersetzungen)</span>
+    </label>
+    <div class="bt-select-buttons">
+      <button class="btn small" id="bt-sel-all">Alle</button>
+      <button class="btn small" id="bt-sel-none">Keine</button>
+      <button class="btn small" id="bt-sel-stale">Nur veraltete</button>
+    </div>
     <table class="bulk-translate-table"><tbody>${langRows}</tbody></table>
     <div class="modal-actions">
       <button class="btn" id="btn-bt-cancel">Schliessen</button>
@@ -1168,6 +1209,16 @@ async function openTranslateAllModal(it) {
     </div>
     <div id="bt-summary" class="muted"></div>
   `);
+
+  // NT-568: Auswahl-Helfer
+  const setAll = (val) => { for (const c of document.querySelectorAll(".bt-lang")) c.checked = val; };
+  document.getElementById("bt-sel-all").addEventListener("click", () => setAll(true));
+  document.getElementById("bt-sel-none").addEventListener("click", () => setAll(false));
+  document.getElementById("bt-sel-stale").addEventListener("click", () => {
+    for (const c of document.querySelectorAll(".bt-lang")) {
+      c.checked = ((it.translations[c.value] || {}).stale || 0) > 0;
+    }
+  });
 
   // NT-550/551 Pass 12 (Lisbeth 09:51 + 09:56 LOW/MEDIUM FUNCTIONAL):
   // Stream-State lebt im outer Scope, damit btn-bt-cancel und die globale
@@ -1223,6 +1274,16 @@ async function openTranslateAllModal(it) {
   const startBtn = document.getElementById("btn-bt-start");
   const startCtrl = new AbortController();
   startBtn.addEventListener("click", () => {
+    // NT-568: gewaehlte Sprachen + only_stale auslesen
+    const selected = [...document.querySelectorAll(".bt-lang:checked")].map(c => c.value);
+    if (!selected.length) { showToast("Keine Sprache gewaehlt", "error"); return; }
+    const onlyStale = document.getElementById("bt-only-stale").checked;
+    for (const code of targetLangs) {
+      if (!selected.includes(code)) {
+        const r0 = document.querySelector(`tr[data-lang="${code}"] .status`);
+        if (r0) r0.innerHTML = `<span class="muted">uebersprungen</span>`;
+      }
+    }
     startBtn.disabled = true;
     startBtn.innerHTML = '<span class="spinner"></span> uebersetze ...';
     // NT-549 Pass 9 (Lisbeth MEDIUM FUNCTIONAL): SSE statt fetch-Chain.
@@ -1232,7 +1293,7 @@ async function openTranslateAllModal(it) {
     let okCount = 0;
     let errCount = 0;
     let activeRow = null;
-    let totalLangs = targetLangs.length;
+    let totalLangs = selected.length;
     const finalize = () => {
       // NT-550/551 Pass 12: Wenn der Stream durch externes Modal-Close
       // (stopStream) bereits weg ist, finalize NICHT ausfuehren — der
@@ -1257,7 +1318,7 @@ async function openTranslateAllModal(it) {
       // weil er im cancel-Pfad nicht feuert (stopStream schliesst Stream,
       // server-cancelled-Event kommt nie an, finalize laeuft nicht).
     };
-    es = new EventSource(`/api/items/${platform}/${itemId}/translate-stream`);
+    es = new EventSource(`/api/items/${platform}/${itemId}/translate-stream?only_stale=${onlyStale}&langs=${encodeURIComponent(selected.join(","))}`);
     es.addEventListener("start", (ev) => {
       const data = JSON.parse(ev.data);
       if (typeof data.n_total === "number") totalLangs = data.n_total;

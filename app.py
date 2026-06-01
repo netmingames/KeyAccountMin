@@ -498,9 +498,33 @@ def api_translate_all(platform: str, item_id: str, body: _TranslateBody) -> dict
     }
 
 
+def _stale_or_empty_fields(idir: Path, lang: str) -> list[str]:
+    """NT-568: Felder einer Sprache, die UEBERSETZT werden muessen — leer ODER
+    veraltet (stale). Manuell editierte/aktuelle Felder bleiben aussen vor.
+
+    Nur Master-Felder mit Inhalt sind Kandidaten. Existiert keine Translation,
+    sind alle Content-Felder faellig.
+    """
+    master = edit_ops.read_master(idir)
+    tpath = storage.translation_path(idir, lang)
+    t = edit_ops.read_translation(idir, lang) if tpath.exists() else None
+    out: list[str] = []
+    for f, v in master.fields.items():
+        if not v:
+            continue
+        if t is None:
+            out.append(f)
+            continue
+        tf = t.fields.get(f)
+        if tf is None or not tf.value or tf.stale:
+            out.append(f)
+    return out
+
+
 @app.get("/api/items/{platform}/{item_id}/translate-stream")
 async def api_translate_stream(
     platform: str, item_id: str, request: Request, engine: str | None = None,
+    langs: str | None = None, only_stale: bool = False,
 ) -> StreamingResponse:
     """SSE-Stream fuer Bulk-Uebersetzung (Lisbeth NT-549 Pass 9 MEDIUM FUNCTIONAL).
 
@@ -525,6 +549,19 @@ async def api_translate_stream(
     idir = _resolve_idir_with_meta(platform, item_id)
     meta = edit_ops.read_meta(idir)
     target_langs = [l for l in meta.active_languages if l != meta.master_lang]
+
+    # NT-568: optionale Sprachauswahl (Subset der aktiven Zielsprachen). Ohne
+    # langs-Param bleibt es bei "alle aktiven" (rueckwaertskompatibel). Unbekannte
+    # oder inaktive Codes werden ignoriert; bleibt nichts uebrig -> 400.
+    if langs is not None:
+        requested = [c.strip() for c in langs.split(",") if c.strip()]
+        active_set = set(target_langs)
+        target_langs = [c for c in requested if c in active_set]
+        if not target_langs:
+            raise HTTPException(
+                status_code=400,
+                detail="Keine gueltige Zielsprache in 'langs' (muss aktive Nicht-Master-Sprache sein).",
+            )
 
     _VALID_ENGINES = {None, "mock", "claude", "claude-cli"}
     if engine not in _VALID_ENGINES:
@@ -565,9 +602,12 @@ async def api_translate_stream(
                 # (plus is_disconnected feuert nicht mehr punktlich). Mit
                 # asyncio.to_thread laeuft der Claude-CLI-Subprozess in einem
                 # Worker-Thread, der Loop bleibt frei.
+                # NT-568: bei only_stale nur leere/veraltete Felder uebersetzen
+                # (schnelle Sync-Lesung, Millisekunden); sonst alle Felder.
+                _fields = _stale_or_empty_fields(idir, lang) if only_stale else None
                 r = await asyncio.to_thread(
                     translator.translate_item_lang,
-                    idir, lang, fields=None, translator=tx,
+                    idir, lang, fields=_fields, translator=tx,
                 )
                 entry.update({
                     "ok": True,

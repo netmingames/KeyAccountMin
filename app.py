@@ -165,8 +165,10 @@ def api_get_item(platform: str, item_id: str) -> dict:
             # zeigt (sonst rendert es leer, inkonsistent zum Bulk-Translate-Modal).
             if lang in meta.active_languages:
                 n_content = sum(1 for v in master.fields.values() if v)
+                # NT-568 (Lisbeth 20:03): echter Nenner statt 0 -> Pill zeigt
+                # 0/n_content (Fuellstand-Ratio) statt irrefuehrendem 0/0.
                 translations[lang] = {
-                    "filled": 0, "total": 0, "stale": n_content,
+                    "filled": 0, "total": n_content, "stale": n_content,
                     "manually_edited": 0, "pending": n_content, "updated_at": "",
                 }
             continue

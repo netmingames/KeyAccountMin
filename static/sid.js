@@ -214,8 +214,10 @@ function renderInhalt(it, targetLangs) {
   const targetOptions = targetLangs.map(code => {
     const l = state.langByCode[code];
     const summary = it.translations[code];
-    const stale = summary?.stale > 0 ? ` (${summary.stale} stale)` : "";
-    return `<option value="${code}" ${code === state.currentTargetLang ? "selected" : ""}>${escapeHtml(l?.display || code)}${stale}</option>`;
+    // NT-565 (Lisbeth 20:00): an pending koppeln (wie der Rest der UI), nicht an
+    // stale — sonst sehen Sprachen mit leeren-aber-nicht-stale Feldern "sauber" aus.
+    const pend = summary?.pending > 0 ? ` (${summary.pending} offen)` : "";
+    return `<option value="${code}" ${code === state.currentTargetLang ? "selected" : ""}>${escapeHtml(l?.display || code)}${pend}</option>`;
   }).join("");
 
   // NT-550 Pass 2 (Lisbeth 15:14 LOW FUNCTIONAL): Export-Button auch ohne
@@ -287,8 +289,13 @@ function renderInhalt(it, targetLangs) {
         const ttl = s.pending > 0 ? ` — ${s.pending} offen` : (s.filled != null ? " — komplett" : "");
         return `<button class="lang-pill${act}" data-lang-pill="${code}" title="${escapeHtml((state.langByCode[code]?.display || code) + ttl)}">${escapeHtml(state.langByCode[code]?.iso || code)} <span class="muted">${fill}</span>${pendB}${manB}</button>`;
       }).join("")}
-      ${inactiveLangs.length ? `<span class="muted lang-avail-sep">· Verfuegbar/inaktiv (${inactiveLangs.length}):</span>` + inactiveLangs.map(code =>
-        `<button class="lang-pill inactive" data-lang-activate="${code}" title="${escapeHtml(state.langByCode[code]?.display || code)} — inaktiv (0/${nContent} uebersetzt), klick zum Aktivieren">${escapeHtml(state.langByCode[code]?.iso || code)} <span class="muted">0/${nContent} · inaktiv</span></button>`).join("") : ""}
+      ${inactiveLangs.length ? `<span class="muted lang-avail-sep">· Verfuegbar/inaktiv (${inactiveLangs.length}):</span>` + inactiveLangs.map(code => {
+        // NT-568 (Lisbeth 20:03): hat eine inaktive Sprache schon eine Translation-
+        // Datei (Daten bleiben beim Deaktivieren erhalten), echten Fuellstand zeigen.
+        const si = it.translations[code];
+        const fi = (si && si.total) ? `${si.filled}/${si.total}` : `0/${nContent}`;
+        return `<button class="lang-pill inactive" data-lang-activate="${code}" title="${escapeHtml(state.langByCode[code]?.display || code)} — inaktiv (${fi} uebersetzt), klick zum Aktivieren">${escapeHtml(state.langByCode[code]?.iso || code)} <span class="muted">${fi} · inaktiv</span></button>`;
+      }).join("") : ""}
     </div>` : "";
 
   return `

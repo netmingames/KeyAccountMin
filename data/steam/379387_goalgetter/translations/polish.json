@@ -18,18 +18,18 @@
       "last_translated_at": "2026-06-01T16:27:50"
     },
     "sysreqs_min_osversion": {
-      "value": "",
-      "source_hash": "",
-      "stale": true,
+      "value": "64-bitowy system MS Windows 10 lub nowszy",
+      "source_hash": "09916c78690317a438394d142d33975c734bd0e2794af8876c786c10bada29dd",
+      "stale": false,
       "manually_edited": false,
-      "last_translated_at": ""
+      "last_translated_at": "2026-06-01T16:41:47"
     },
     "sysreqs_min_processor": {
-      "value": "",
-      "source_hash": "",
-      "stale": true,
+      "value": "Intel Core i3 2.6 GHz",
+      "source_hash": "7ea1822d048f09f641ead0fa5ef63d91874279c8204730b6e26e9daeda4c0d60",
+      "stale": false,
       "manually_edited": false,
-      "last_translated_at": ""
+      "last_translated_at": "2026-06-01T16:41:47"
     },
     "sysreqs_min_memory": {
       "value": "",
@@ -39,11 +39,11 @@
       "last_translated_at": ""
     },
     "sysreqs_min_graphics": {
-      "value": "",
-      "source_hash": "",
-      "stale": true,
+      "value": "Karta graficzna z obsługą DirectX 9",
+      "source_hash": "55e5b216422ff0228cabbfd42b72d00dd1694e698df59c0d8effcd86fd9be345",
+      "stale": false,
       "manually_edited": false,
-      "last_translated_at": ""
+      "last_translated_at": "2026-06-01T16:41:47"
     },
     "sysreqs_min_storage": {
       "value": "",
@@ -130,5 +130,5 @@
       "last_translated_at": ""
     }
   },
-  "updated_at": "2026-06-01T16:27:50"
+  "updated_at": "2026-06-01T16:41:47"
 }

@@ -173,11 +173,24 @@ def api_get_item(platform: str, item_id: str) -> dict:
         n_filled = sum(1 for f in t.fields.values() if f.value)
         n_stale = sum(1 for f in t.fields.values() if f.stale)
         n_manual = sum(1 for f in t.fields.values() if f.manually_edited)
+        # NT-564/568 (Lisbeth 19:14/19:22): exakte "noch zu uebersetzen"-Zahl
+        # (Master-Content-Feld leer ODER stale, ohne Handedits) — die UI waehlt
+        # darauf vor, deckt damit auch leer-aber-nicht-stale Faelle ab.
+        n_pending = 0
+        for mf, mv in master.fields.items():
+            if not mv:
+                continue
+            tf = t.fields.get(mf)
+            if tf is not None and tf.manually_edited:
+                continue
+            if tf is None or not tf.value or tf.stale:
+                n_pending += 1
         translations[lang] = {
             "filled": n_filled,
             "total": len(t.fields),
             "stale": n_stale,
             "manually_edited": n_manual,
+            "pending": n_pending,
             "updated_at": t.updated_at,
         }
 

@@ -677,12 +677,16 @@ def status(idir: Path, active_langs: list[str]) -> dict:
     slot_rows = []
     for slot in SLOTS:
         st = manifest.slots.get(slot.key) or SlotState()
+        slot_dir = _assets_dir(idir) / slot.key
+        # NT-563/564 (Lisbeth 19:18/19:22 LOW): has_default/default_size_ok an der
+        # DATEI festmachen, konsistent mit resolve_asset() und der Screenshot-Logik.
+        default_present = st.default is not None and (slot_dir / st.default.filename).exists()
         row: dict[str, Any] = {
             "key": slot.key, "label": slot.label, "category": slot.category,
             "localizable": slot.localizable, "required": slot.required,
             "target": f"{slot.width}x{slot.height}",
-            "has_default": st.default is not None,
-            "default_size_ok": st.default.size_ok if st.default else None,
+            "has_default": default_present,
+            "default_size_ok": st.default.size_ok if default_present else None,
         }
         if slot.localizable and langs:
             # NT-564 Pass 3 (Lisbeth 17:40 LOW FUNCTIONAL): pro Sprache
@@ -695,7 +699,6 @@ def status(idir: Path, active_langs: list[str]) -> dict:
             # Manifest-Eintrag (Datei geloescht) faellt wie in resolve_asset()
             # auf default zurueck — sonst zeigt der Grafiken-Tab tote Override-
             # Chips/Counts, die nicht mit dem echten Export uebereinstimmen.
-            slot_dir = _assets_dir(idir) / slot.key
             per_lang: dict[str, dict[str, Any]] = {}
             for lang in langs:
                 ov = st.localized.get(lang)
@@ -733,8 +736,8 @@ def status(idir: Path, active_langs: list[str]) -> dict:
             "items": [
                 {
                     "id": s.id, "order": s.order,
-                    "has_default": s.default is not None,
-                    "size_ok": s.default.size_ok if s.default else None,
+                    "has_default": s.default is not None and (_sdir / s.default.filename).exists(),
+                    "size_ok": s.default.size_ok if (s.default is not None and (_sdir / s.default.filename).exists()) else None,
                     "n_overrides": sum(1 for af in s.localized.values() if (_sdir / af.filename).exists()),
                     "master_caption": s.master_caption,
                     "n_captions": len(s.captions),

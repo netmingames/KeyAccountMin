@@ -72,3 +72,21 @@ def test_api_get_item_pending(client) -> None:
     client.put("/api/items/steam/1141975/active-languages", json={"languages": ["german", "french"]})
     d = client.get("/api/items/steam/1141975").json()
     assert d["translations"]["french"]["pending"] == 1  # short_description leer+stale
+
+
+def test_api_get_item_active_no_file_lang_listed(tmp_path, monkeypatch) -> None:
+    # NT-564 Pass 8: aktive Zielsprache OHNE Translation-Datei -> trotzdem Summary
+    # mit pending, damit das Pill nicht leer rendert.
+    monkeypatch.setattr(app_mod, "DATA_ROOT", tmp_path)
+    from fastapi.testclient import TestClient
+    idir = tmp_path / "steam" / "1141975_p5"
+    (idir / "translations").mkdir(parents=True)
+    (idir / "meta.json").write_text(
+        '{"schema_version":1,"item_id":"1141975","platform":"steam","name":"P5",'
+        '"master_lang":"german","active_languages":["german","french"]}', encoding="utf-8")
+    (idir / "master_de.json").write_text(
+        '{"schema_version":1,"item_id":"1141975","lang":"de","fields":{"short_description":"x"}}', encoding="utf-8")
+    # KEINE french.json
+    d = TestClient(app_mod.app).get("/api/items/steam/1141975").json()
+    assert d["translations"]["french"]["pending"] == 1
+    assert d["translations"]["french"]["filled"] == 0

@@ -160,6 +160,15 @@ def api_get_item(platform: str, item_id: str) -> dict:
             continue
         tpath = storage.translation_path(idir, lang)
         if not tpath.exists():
+            # NT-564 (Lisbeth 19:38 LOW): aktive Zielsprache ohne Translation-Datei
+            # trotzdem mit Summary listen, damit das Sprach-Pill den pending-Stand
+            # zeigt (sonst rendert es leer, inkonsistent zum Bulk-Translate-Modal).
+            if lang in meta.active_languages:
+                n_content = sum(1 for v in master.fields.values() if v)
+                translations[lang] = {
+                    "filled": 0, "total": 0, "stale": n_content,
+                    "manually_edited": 0, "pending": n_content, "updated_at": "",
+                }
             continue
         try:
             t = schema.TranslationDocument(**storage.read_json(tpath))
@@ -518,25 +527,17 @@ def _stale_or_empty_fields(idir: Path, lang: str) -> list[str]:
     Nur Master-Felder mit Inhalt sind Kandidaten. Existiert keine Translation,
     sind alle Content-Felder faellig.
     """
-    # NT-563 (Lisbeth 19:01 LOW): auch der Master-Read darf hier nicht als 500
-    # durchschlagen — translate_item_lang meldet den Master-Fehler dann per
-    # Sprache im Stream.
-    try:
-        master = edit_ops.read_master(idir)
-    except Exception:  # noqa: BLE001
-        return []
+    # NT-563 (Lisbeth 19:33 LOW): Lese-Fehler (korrupter Master/Translation) hier
+    # NICHT schlucken. Diese Funktion laeuft in api_translate_stream INNERHALB des
+    # per-Sprache-try — eine geworfene Exception wird dort als per-Sprache-Fehler
+    # gemeldet (kein 500, aber auch kein stiller 0-Felder-No-op wie beim frueheren
+    # `return []`).
+    master = edit_ops.read_master(idir)
     content = [f for f, v in master.fields.items() if v]
     tpath = storage.translation_path(idir, lang)
     if not tpath.exists():
         return content
-    # NT-565 (Lisbeth 18:49 MEDIUM FUNCTIONAL): korrupte/schema-invalide
-    # Translation darf hier nicht als 500 durchschlagen — als komplett faellig
-    # behandeln; der eigentliche translate_item_lang-Aufruf meldet den Fehler
-    # dann sauber als per-Sprache-Fehler im Stream.
-    try:
-        t = edit_ops.read_translation(idir, lang)
-    except Exception:  # noqa: BLE001
-        return content
+    t = edit_ops.read_translation(idir, lang)
     out: list[str] = []
     for f in content:
         tf = t.fields.get(f)

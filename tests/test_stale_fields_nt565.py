@@ -23,10 +23,16 @@ def _make(tmp_path: Path, french_content: str) -> Path:
     return idir
 
 
-def test_corrupt_translation_treated_as_all_due(tmp_path: Path) -> None:
+def test_corrupt_translation_raises_for_per_lang_failure(tmp_path: Path) -> None:
+    # NT-563 Pass 8: korrupte Translation wirft -> api_translate_stream meldet das
+    # als per-Sprache-Fehler (kein 500, kein stiller No-op).
     idir = _make(tmp_path, "{ kaputtes json")
-    fields = app_mod._stale_or_empty_fields(idir, "french")  # darf NICHT werfen
-    assert set(fields) == {"short_description", "about"}
+    raised = False
+    try:
+        app_mod._stale_or_empty_fields(idir, "french")
+    except Exception:
+        raised = True
+    assert raised
 
 
 def test_missing_translation_returns_all_content(tmp_path: Path) -> None:

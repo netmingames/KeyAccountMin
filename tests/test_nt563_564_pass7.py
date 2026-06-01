@@ -42,10 +42,13 @@ def test_stale_skips_manually_edited(tmp_path: Path) -> None:
     assert app_mod._stale_or_empty_fields(idir, "french") == ["about"]
 
 
-def test_stale_corrupt_master_returns_empty(tmp_path: Path) -> None:
+def test_stale_corrupt_master_raises(tmp_path: Path) -> None:
+    # NT-563 Pass 8: korrupter Master wirft -> per-Sprache-Fehler im Stream,
+    # statt stiller 0-Felder-No-op.
     idir = _item(tmp_path)
     (idir / "master_de.json").write_text("{ kaputt", encoding="utf-8")
-    assert app_mod._stale_or_empty_fields(idir, "french") == []  # kein Crash
+    with pytest.raises(Exception):
+        app_mod._stale_or_empty_fields(idir, "french")
 
 
 def test_screenshot_details_default_file_aware(tmp_path: Path) -> None:

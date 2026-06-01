@@ -36,6 +36,18 @@ app.mount("/static", StaticFiles(directory=ROOT / "static"), name="static")
 templates = Jinja2Templates(directory=ROOT / "templates")
 
 
+@app.exception_handler(assets.ManifestCorruptError)
+async def _on_manifest_corrupt(_req: Request, exc: assets.ManifestCorruptError) -> JSONResponse:
+    """NT-564 Pass 2 (Lisbeth 17:17 LOW FUNCTIONAL): kaputte manifest.json soll
+    keinen 500er Stacktrace produzieren, sondern eine kontrollierte 422-Antwort.
+
+    Damit kann das Grafiken-UI eine klare Fehlermeldung anzeigen statt einem
+    leeren Fehlertoast — der ganze Tab bleibt bedienbar, nur dieses eine Item
+    zeigt einen Hinweis.
+    """
+    return JSONResponse(status_code=422, content={"detail": str(exc)})
+
+
 @app.get("/api/health")
 def health() -> JSONResponse:
     return JSONResponse(
@@ -832,6 +844,31 @@ async def api_screenshot_override(
     return {"ok": True, "screenshot": shot.model_dump()}
 
 
+@app.delete("/api/items/{platform}/{item_id}/assets/screenshots/{shot_id}/override")
+def api_delete_screenshot_override(
+    platform: str, item_id: str, shot_id: int, lang: str,
+) -> dict:
+    """Loescht einen Per-Sprache-Override eines Screenshots (Default bleibt)."""
+    idir = _resolve_idir_with_meta(platform, item_id)
+    try:
+        removed = assets.delete_screenshot_override(idir, shot_id, lang)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    if not removed:
+        raise HTTPException(status_code=404, detail=f"Kein Override fuer {lang} bei Screenshot {shot_id}")
+    return {"ok": True}
+
+
+@app.get("/api/items/{platform}/{item_id}/assets/screenshots/{shot_id}/details")
+def api_screenshot_details(platform: str, item_id: str, shot_id: int) -> dict:
+    """Detailansicht eines Screenshots fuer das Per-Sprache-Modal."""
+    idir = _resolve_idir_with_meta(platform, item_id)
+    try:
+        return assets.get_screenshot_details(idir, shot_id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
 @app.put("/api/items/{platform}/{item_id}/assets/screenshots/{shot_id}/caption")
 def api_screenshot_caption(platform: str, item_id: str, shot_id: int, body: _CaptionBody) -> dict:
     idir = _resolve_idir_with_meta(platform, item_id)
@@ -840,6 +877,77 @@ def api_screenshot_caption(platform: str, item_id: str, shot_id: int, body: _Cap
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     return {"ok": True, "screenshot": shot.model_dump()}
+
+
+class _CaptionTranslateBody(BaseModel):
+    # leer = alle aktiven Zielsprachen (außer master_lang)
+    target_langs: list[str] | None = None
+    overwrite_existing: bool = False
+    engine: str | None = None
+
+
+@app.post("/api/items/{platform}/{item_id}/assets/screenshots/{shot_id}/translate-captions")
+def api_translate_screenshot_captions(
+    platform: str, item_id: str, shot_id: int, body: _CaptionTranslateBody,
+) -> dict:
+    """Uebersetzt master_caption eines Screenshots in alle aktiven Zielsprachen.
+
+    NT-564 Pass 2 (Lisbeth 17:17 MEDIUM FUNCTIONAL): captions waren nicht
+    ans Translation-Pipeline angebunden — wird hier ueber das gleiche
+    translator-Modul nachgereicht, das auch die Content-Felder uebersetzt.
+    Standard ueberschreibt keine vorhandenen Captions (manuelle Edits
+    bleiben). overwrite_existing=true zwingt das.
+    """
+    idir = _resolve_idir_with_meta(platform, item_id)
+    meta = edit_ops.read_meta(idir)
+    if body.target_langs is not None:
+        target_langs = [l for l in body.target_langs if l != meta.master_lang]
+    else:
+        target_langs = [l for l in meta.active_languages if l != meta.master_lang]
+
+    _VALID_ENGINES = {None, "mock", "claude", "claude-cli"}
+    if body.engine not in _VALID_ENGINES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unbekannte engine '{body.engine}'. Erlaubt: mock | claude | claude-cli | (leer = Default).",
+        )
+    if body.engine == "mock":
+        tx = translator.MockTranslator()
+    elif body.engine in ("claude", "claude-cli"):
+        tx = translator.ClaudeCliTranslator()
+    else:
+        tx = translator.get_translator()
+
+    g = glossary_mod.load(idir)
+    glossary_block = glossary_mod.to_prompt_block(g)
+
+    def translate_one(lang: str, text: str) -> str | None:
+        """Einzel-Caption durch den Translator schicken — Engine-API ist
+        feld-orientiert, also packen wir die caption als pseudo-feld 'caption'."""
+        if not text.strip():
+            return None
+        try:
+            out = tx.translate_lang(
+                master_fields={"caption": text},
+                lang_code=lang,
+                lang_display=steam_codes.get(lang).display,
+                glossary_block=glossary_block,
+                style_block="",
+            )
+        except translator.TranslationError as e:
+            raise HTTPException(status_code=502, detail=f"{lang}: {e}")
+        return out.get("caption")
+
+    try:
+        written = assets.translate_screenshot_captions(
+            idir, shot_id,
+            target_langs=target_langs,
+            translate_fn=translate_one,
+            overwrite_existing=body.overwrite_existing,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {"ok": True, "shot_id": shot_id, "written": written, "engine": tx.name}
 
 
 @app.get("/api/items/{platform}/{item_id}/assets/screenshots/{shot_id}/file")

@@ -181,12 +181,34 @@ def _manifest_path(idir: Path) -> Path:
     return _assets_dir(idir) / "manifest.json"
 
 
+class ManifestCorruptError(Exception):
+    """assets/manifest.json ist nicht lesbar/parsebar/schema-konform.
+
+    NT-564 Pass 2 (Lisbeth 17:17 LOW FUNCTIONAL): vorher hat load_manifest()
+    bei kaputter manifest.json einen rohen JSONDecodeError/ValidationError
+    durchgereicht und der zugehoerige Endpoint hat darauf 500 geliefert.
+    Damit war der Grafiken-Tab fuer das Item gebrickt. Jetzt eine
+    kontrollierte Exception, die der Caller (app.py) zu 422 mappen kann.
+    """
+
+
 def load_manifest(idir: Path, item_id: str = "") -> AssetManifest:
-    """Liest die manifest.json oder liefert ein leeres Manifest (kein Schreiben)."""
+    """Liest die manifest.json oder liefert ein leeres Manifest (kein Schreiben).
+
+    Bei kaputter Datei wird `ManifestCorruptError` geworfen (siehe Klassen-
+    Docstring). Aufrufer (app.py) wandelt das in 422 statt 500 um.
+    """
     p = _manifest_path(idir)
     if not p.exists():
         return AssetManifest(item_id=item_id)
-    return AssetManifest(**storage.read_json(p))
+    try:
+        raw = storage.read_json(p)
+    except (OSError, ValueError, UnicodeDecodeError) as e:
+        raise ManifestCorruptError(f"manifest.json unlesbar: {e}") from e
+    try:
+        return AssetManifest(**raw)
+    except Exception as e:  # noqa: BLE001 - Pydantic ValidationError + Sonderfaelle
+        raise ManifestCorruptError(f"manifest.json hat ungueltiges Schema: {e}") from e
 
 
 def save_manifest(idir: Path, manifest: AssetManifest) -> None:
@@ -270,6 +292,32 @@ def _meta_from_validation(filename: str, v: ValidationResult, size: int) -> Asse
 
 # --- Feste Slots: store / resolve / delete -----------------------------------
 
+def _effective_ext(client_ext: str, detected_fmt: str, allowed: tuple[str, ...]) -> str:
+    """Liefert die Endung, unter der die Datei tatsaechlich abgelegt wird.
+
+    NT-564 Pass 2 (Lisbeth 17:17 MEDIUM FUNCTIONAL): vorher wurde stumpf der
+    vom Client gelieferte Filename-Suffix genommen — ein JPEG, das als .png
+    hochgeladen wird, landete dann als .png auf der Platte und wurde mit
+    Content-Type image/png ausgeliefert, obwohl die Bytes JPEG sind.
+
+    Strategie:
+    1. Wenn Pillow ein Format erkannt hat (`detected_fmt`), gilt das als
+       Ground Truth — auch wenn es vom Client-Filename abweicht.
+    2. Der erkannte Wert muss in `allowed` enthalten sein, sonst Fehler.
+    3. Falls Pillow nichts erkennt (sollte nicht passieren wenn validate_image
+       ok=True liefert, aber als Safety-Net), wird der client-supplied ext
+       genommen und gegen `allowed` validiert.
+    """
+    det = _norm_fmt(detected_fmt)
+    if det:
+        if det not in allowed:
+            raise ValueError(
+                f"Bild-Format {det!r} nicht erlaubt (erlaubt: {list(allowed)})"
+            )
+        return det
+    return _check_ext(client_ext, allowed)
+
+
 def store_asset(idir: Path, slot_key: str, data: bytes, *,
                 lang: str | None = None, ext: str) -> AssetFile:
     """Speichert ein Bild fuer einen festen Slot (default oder Per-Sprache).
@@ -284,10 +332,13 @@ def store_asset(idir: Path, slot_key: str, data: bytes, *,
     if not slot.localizable and _lang_key(lang) != DEFAULT_KEY:
         raise ValueError(f"Slot {slot_key!r} ist sprachneutral — kein Per-Sprache-Override erlaubt")
     lk = _lang_key(lang)
-    ext = _check_ext(ext, slot.formats)
+    # Client-supplied ext wird zwar gepruefet, aber nur als Fallback verwendet.
+    # Den echten Format-Wert liefert Pillow (s. _effective_ext).
+    _check_ext(ext, slot.formats)
     v = validate_image(data, target_w=slot.width, target_h=slot.height, formats=slot.formats)
     if not v.ok:
         raise ValueError(v.warnings[0] if v.warnings else "Kein lesbares Bild")
+    ext = _effective_ext(ext, v.fmt, slot.formats)
 
     slot_dir = _assets_dir(idir) / slot_key
     slot_dir.mkdir(parents=True, exist_ok=True)
@@ -350,11 +401,12 @@ def delete_asset(idir: Path, slot_key: str, lang: str | None = None) -> bool:
 def add_screenshot(idir: Path, data: bytes, *, ext: str,
                    master_caption: str = "") -> Screenshot:
     """Fuegt einen neuen Screenshot hinten an (default-Bild)."""
-    ext = _check_ext(ext, SCREENSHOT_FORMATS)
+    _check_ext(ext, SCREENSHOT_FORMATS)
     v = validate_image(data, target_w=SCREENSHOT_TARGET[0], target_h=SCREENSHOT_TARGET[1],
                        formats=SCREENSHOT_FORMATS)
     if not v.ok:
         raise ValueError(v.warnings[0] if v.warnings else "Kein lesbares Bild")
+    ext = _effective_ext(ext, v.fmt, SCREENSHOT_FORMATS)
 
     manifest = load_manifest(idir)
     new_id = (max((s.id for s in manifest.screenshots), default=0)) + 1
@@ -380,11 +432,12 @@ def set_screenshot_override(idir: Path, shot_id: int, lang: str, data: bytes, *,
     lk = _lang_key(lang)
     if lk == DEFAULT_KEY:
         raise ValueError("Override braucht eine echte Sprache (nicht default)")
-    ext = _check_ext(ext, SCREENSHOT_FORMATS)
+    _check_ext(ext, SCREENSHOT_FORMATS)
     v = validate_image(data, target_w=SCREENSHOT_TARGET[0], target_h=SCREENSHOT_TARGET[1],
                        formats=SCREENSHOT_FORMATS)
     if not v.ok:
         raise ValueError(v.warnings[0] if v.warnings else "Kein lesbares Bild")
+    ext = _effective_ext(ext, v.fmt, SCREENSHOT_FORMATS)
     manifest = load_manifest(idir)
     shot = _find_shot(manifest, shot_id)
     sdir = _assets_dir(idir) / "screenshots"
@@ -412,6 +465,57 @@ def set_screenshot_caption(idir: Path, shot_id: int, text: str, *,
     return shot
 
 
+def translate_screenshot_captions(
+    idir: Path,
+    shot_id: int,
+    *,
+    target_langs: list[str],
+    translate_fn,
+    overwrite_existing: bool = False,
+) -> dict[str, str]:
+    """Uebersetzt master_caption fuer einen Screenshot in die `target_langs`.
+
+    NT-564 Pass 2 (Lisbeth 17:17 MEDIUM FUNCTIONAL): captions waren bisher
+    nicht an die Uebersetzungs-Pipeline angebunden — master_caption wurde
+    nur gesetzt, captions blieben leer und der ZIP-Export fiel fuer jede
+    Sprache auf den Master-Text zurueck. Diese Funktion ist der Wiring-
+    Punkt: app.py reicht eine translate_fn(lang, text) -> str rein (per
+    Default die Claude-CLI-Engine), wir loopen ueber die Sprachen und
+    schreiben das Ergebnis in shot.captions[lang].
+
+    Parameter:
+      target_langs       liste echter Steam-Sprachcodes (master_lang muss
+                         vom Caller bereits ausgeschlossen sein).
+      translate_fn       callable(lang, text) -> uebersetzter text. Wird
+                         nicht aufgerufen wenn master_caption leer ist.
+      overwrite_existing False (Default) -> nur leere captions[lang] werden
+                         gefuellt, manuelle Edits bleiben unangetastet.
+                         True               -> alle target_langs ueberschreiben.
+
+    Rueckgabe: dict {lang: uebersetzter_text} mit den tatsaechlich
+    geschriebenen Werten (uebersprungene Sprachen fehlen).
+    """
+    manifest = load_manifest(idir)
+    shot = _find_shot(manifest, shot_id)
+    master = (shot.master_caption or "").strip()
+    if not master:
+        return {}
+    written: dict[str, str] = {}
+    for lang in target_langs:
+        if not steam_codes.is_valid(lang):
+            raise ValueError(f"Unbekannte Sprache: {lang!r}")
+        if not overwrite_existing and shot.captions.get(lang, "").strip():
+            continue
+        translated = translate_fn(lang, master)
+        if translated is None:
+            continue
+        shot.captions[lang] = str(translated)
+        written[lang] = str(translated)
+    if written:
+        save_manifest(idir, manifest)
+    return written
+
+
 def reorder_screenshots(idir: Path, ordered_ids: list[int]) -> list[Screenshot]:
     """Setzt die Reihenfolge anhand der uebergebenen id-Liste."""
     manifest = load_manifest(idir)
@@ -424,6 +528,50 @@ def reorder_screenshots(idir: Path, ordered_ids: list[int]) -> list[Screenshot]:
     manifest.screenshots.sort(key=lambda s: s.order)
     save_manifest(idir, manifest)
     return manifest.screenshots
+
+
+def delete_screenshot_override(idir: Path, shot_id: int, lang: str) -> bool:
+    """Loescht ein Per-Sprache-Bild eines Screenshots (Default-Bild bleibt).
+
+    NT-564 Pass 2: UI braucht einen Weg, ein Per-Sprache-Override wieder
+    auf das Default-Bild zurueckzustellen. True wenn etwas weg war.
+    """
+    lk = _lang_key(lang)
+    if lk == DEFAULT_KEY:
+        raise ValueError("Override-Delete braucht eine echte Sprache (nicht default)")
+    manifest = load_manifest(idir)
+    shot = next((s for s in manifest.screenshots if s.id == shot_id), None)
+    if shot is None:
+        return False
+    entry = shot.localized.pop(lk, None)
+    if entry is None:
+        return False
+    _unlink_quiet(_assets_dir(idir) / "screenshots" / entry.filename)
+    save_manifest(idir, manifest)
+    return True
+
+
+def get_screenshot_details(idir: Path, shot_id: int) -> dict:
+    """Detailansicht eines Screenshots fuers UI: Captions + per-lang Override-Status.
+
+    NT-564 Pass 2: das Status-Aggregate (`status()`) liefert nur Zaehlwerte;
+    fuer den Per-Sprache-Editor (Modal) muessen wir die echten Texte und
+    die Override-Existenz je Sprache rausreichen. Wir bauen hier eine
+    schlanke read-only-View zusammen, ohne das Schema von Screenshot
+    nach aussen zu reichen.
+    """
+    manifest = load_manifest(idir)
+    shot = next((s for s in manifest.screenshots if s.id == shot_id), None)
+    if shot is None:
+        raise ValueError(f"Screenshot {shot_id} nicht gefunden")
+    return {
+        "id": shot.id,
+        "order": shot.order,
+        "master_caption": shot.master_caption,
+        "captions": dict(shot.captions),
+        "has_default": shot.default is not None,
+        "has_override": {lang: True for lang in shot.localized.keys()},
+    }
 
 
 def delete_screenshot(idir: Path, shot_id: int) -> bool:

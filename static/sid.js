@@ -603,20 +603,27 @@ async function renderGrafiken(it) {
   }).join("");
 
   const shots = (status.screenshots && status.screenshots.items) || [];
+  const targetLangs = it.meta.active_languages.filter(l => l !== it.meta.master_lang);
   const shotCards = shots.map((s, i) => {
     const base = `/api/items/${platform}/${itemId}/assets/screenshots/${s.id}`;
     const warn = s.size_ok === false ? `<span class="flag stale">Maß ≠ 1920×1080</span>` : "";
     const thumb = s.has_default
       ? `<img class="shot-thumb" src="${base}/file?lang=default&v=${cv}" alt="">`
       : `<div class="asset-empty">—</div>`;
+    const captionCount = s.n_captions || 0;
+    const overrideCount = s.n_overrides || 0;
+    const langBadges = `<span class="muted">${overrideCount} Bild-Override${overrideCount === 1 ? "" : "s"} · ${captionCount}/${targetLangs.length} Caption${captionCount === 1 ? "" : "s"}</span>`;
     return `<div class="shot-card" data-shot="${s.id}">
       <div class="shot-num">#${i + 1}${warn}</div>
       ${thumb}
       <input type="text" class="shot-caption" data-shot="${s.id}" value="${escapeHtml(s.master_caption || "")}" placeholder="Caption (DE)">
+      <div class="shot-langinfo">${langBadges}</div>
       <div class="shot-actions">
-        <button class="btn small" data-shot-up="${s.id}" ${i === 0 ? "disabled" : ""}>↑</button>
-        <button class="btn small" data-shot-down="${s.id}" ${i === shots.length - 1 ? "disabled" : ""}>↓</button>
-        <button class="btn small del" data-shot-del="${s.id}">🗑</button>
+        <button class="btn small" data-shot-up="${s.id}" ${i === 0 ? "disabled" : ""} title="hoch">↑</button>
+        <button class="btn small" data-shot-down="${s.id}" ${i === shots.length - 1 ? "disabled" : ""} title="runter">↓</button>
+        <button class="btn small" data-shot-langs="${s.id}" title="Per-Sprache: Bild-Overrides + Captions">🌐 Sprachen</button>
+        <button class="btn small" data-shot-translate="${s.id}" title="Master-Caption in alle Zielsprachen uebersetzen" ${(!s.master_caption || !targetLangs.length) ? "disabled" : ""}>✎ Übersetzen</button>
+        <button class="btn small del" data-shot-del="${s.id}" title="Screenshot loeschen">🗑</button>
       </div>
     </div>`;
   }).join("");
@@ -653,14 +660,40 @@ function bindGrafikenHandlers(it) {
     const fd = new FormData();
     fd.append("file", file);
     for (const [k, v] of Object.entries(form)) fd.append(k, v);
-    const r = await fetch(url, { method: "POST", body: fd });
-    if (!r.ok) {
-      let detail = `HTTP ${r.status}`;
-      try { const b = await r.json(); if (b && b.detail) detail = b.detail; } catch (_) {}
-      showToast("Upload fehlgeschlagen: " + detail, "error");
+    try {
+      const r = await fetch(url, { method: "POST", body: fd });
+      if (!r.ok) {
+        let detail = `HTTP ${r.status}`;
+        try { const b = await r.json(); if (b && b.detail) detail = b.detail; } catch (_) {}
+        showToast("Upload fehlgeschlagen: " + detail, "error");
+        return false;
+      }
+      return true;
+    } catch (err) {
+      showToast("Upload fehlgeschlagen: " + (err.message || err), "error");
       return false;
     }
-    return true;
+  };
+
+  // NT-564 Pass 2 (Lisbeth 17:17 LOW FUNCTIONAL): zentrale Wrapper-Funktion
+  // fuer alle Mutation-Calls — vorher haben delete/caption/reorder ihre
+  // r.ok nicht geprueft und haben bei Server-Errors trotzdem reload/flashOk
+  // ausgeloest. Jetzt: Fehler -> showToast, kein Reload, keine grueneren
+  // Saved-Animation.
+  const mutate = async (url, opts = {}, { errorLabel = "Aktion fehlgeschlagen" } = {}) => {
+    try {
+      const r = await fetch(url, opts);
+      if (!r.ok) {
+        let detail = `HTTP ${r.status}`;
+        try { const b = await r.json(); if (b && b.detail) detail = b.detail; } catch (_) {}
+        showToast(`${errorLabel}: ${detail}`, "error");
+        return null;
+      }
+      try { return await r.json(); } catch (_) { return {}; }
+    } catch (err) {
+      showToast(`${errorLabel}: ${err.message || err}`, "error");
+      return null;
+    }
   };
 
   // Standard- und Per-Sprache-Uploads (alle file-inputs mit data-slot)
@@ -681,8 +714,12 @@ function bindGrafikenHandlers(it) {
   for (const b of document.querySelectorAll("[data-del-slot]")) {
     b.addEventListener("click", async () => {
       if (!confirm("Standard-Bild dieses Slots loeschen?")) return;
-      await fetch(`/api/items/${platform}/${itemId}/assets/${b.dataset.delSlot}`, { method: "DELETE" });
-      await reload();
+      const res = await mutate(
+        `/api/items/${platform}/${itemId}/assets/${b.dataset.delSlot}`,
+        { method: "DELETE" },
+        { errorLabel: "Bild loeschen fehlgeschlagen" },
+      );
+      if (res !== null) await reload();
     });
   }
   // Override entfernen
@@ -690,8 +727,12 @@ function bindGrafikenHandlers(it) {
     b.addEventListener("click", async () => {
       const slot = b.dataset.clearSlot;
       const lang = b.dataset.clearLang;
-      await fetch(`/api/items/${platform}/${itemId}/assets/${slot}?lang=${encodeURIComponent(lang)}`, { method: "DELETE" });
-      await reload();
+      const res = await mutate(
+        `/api/items/${platform}/${itemId}/assets/${slot}?lang=${encodeURIComponent(lang)}`,
+        { method: "DELETE" },
+        { errorLabel: "Override entfernen fehlgeschlagen" },
+      );
+      if (res !== null) await reload();
     });
   }
   // Screenshot hinzufuegen
@@ -704,22 +745,31 @@ function bindGrafikenHandlers(it) {
       await reload();
     }
   });
-  // Screenshot-Caption (on-blur)
+  // Screenshot-Caption (on-blur) — master_caption
   for (const inp of document.querySelectorAll(".shot-caption")) {
     inp.addEventListener("blur", async e => {
-      await fetch(`/api/items/${platform}/${itemId}/assets/screenshots/${e.target.dataset.shot}/caption`, {
-        method: "PUT", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: e.target.value }),
-      });
-      flashOk(e.target);
+      const res = await mutate(
+        `/api/items/${platform}/${itemId}/assets/screenshots/${e.target.dataset.shot}/caption`,
+        {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text: e.target.value }),
+        },
+        { errorLabel: "Caption speichern fehlgeschlagen" },
+      );
+      if (res !== null) flashOk(e.target);
     });
   }
   // Screenshot loeschen
   for (const b of document.querySelectorAll("[data-shot-del]")) {
     b.addEventListener("click", async () => {
       if (!confirm("Screenshot loeschen?")) return;
-      await fetch(`/api/items/${platform}/${itemId}/assets/screenshots/${b.dataset.shotDel}`, { method: "DELETE" });
-      await reload();
+      const res = await mutate(
+        `/api/items/${platform}/${itemId}/assets/screenshots/${b.dataset.shotDel}`,
+        { method: "DELETE" },
+        { errorLabel: "Screenshot loeschen fehlgeschlagen" },
+      );
+      if (res !== null) await reload();
     });
   }
   // Reihenfolge (hoch/runter)
@@ -729,14 +779,46 @@ function bindGrafikenHandlers(it) {
     const j = i + dir;
     if (i < 0 || j < 0 || j >= ids.length) return;
     [ids[i], ids[j]] = [ids[j], ids[i]];
-    await fetch(`/api/items/${platform}/${itemId}/assets/screenshots/reorder`, {
-      method: "PUT", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ordered_ids: ids }),
-    });
-    await reload();
+    const res = await mutate(
+      `/api/items/${platform}/${itemId}/assets/screenshots/reorder`,
+      {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ordered_ids: ids }),
+      },
+      { errorLabel: "Reihenfolge speichern fehlgeschlagen" },
+    );
+    if (res !== null) await reload();
   };
   for (const b of document.querySelectorAll("[data-shot-up]")) b.addEventListener("click", () => moveShot(b.dataset.shotUp, -1));
   for (const b of document.querySelectorAll("[data-shot-down]")) b.addEventListener("click", () => moveShot(b.dataset.shotDown, 1));
+  // Master-Caption uebersetzen -> alle Zielsprachen
+  for (const b of document.querySelectorAll("[data-shot-translate]")) {
+    b.addEventListener("click", async () => {
+      const shotId = b.dataset.shotTranslate;
+      const overwrite = confirm("Nur leere Captions fuellen?\n\nOK = nur leere\nAbbrechen = alle ueberschreiben");
+      b.disabled = true;
+      const res = await mutate(
+        `/api/items/${platform}/${itemId}/assets/screenshots/${shotId}/translate-captions`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ overwrite_existing: !overwrite }),
+        },
+        { errorLabel: "Caption-Uebersetzung fehlgeschlagen" },
+      );
+      b.disabled = false;
+      if (res !== null) {
+        const n = Object.keys(res.written || {}).length;
+        showToast(n ? `${n} Caption(s) uebersetzt (${res.engine})` : "Keine Sprache zu uebersetzen", n ? "ok" : "error");
+        await reload();
+      }
+    });
+  }
+  // Per-Sprache Captions + Bild-Overrides Modal
+  for (const b of document.querySelectorAll("[data-shot-langs]")) {
+    b.addEventListener("click", () => openScreenshotLangsModal(it, parseInt(b.dataset.shotLangs, 10)));
+  }
   // Export ZIP
   const exBtn = document.getElementById("btn-asset-export");
   if (exBtn) exBtn.addEventListener("click", () => {
@@ -747,6 +829,137 @@ function bindGrafikenHandlers(it) {
     a.click();
     a.remove();
   });
+}
+
+async function openScreenshotLangsModal(it, shotId) {
+  const platform = it.meta.platform;
+  const itemId = it.meta.item_id;
+  const masterLang = it.meta.master_lang;
+  const targetLangs = it.meta.active_languages.filter(l => l !== masterLang);
+
+  // Aktuellen Stand des Manifests holen (captions + localized)
+  let manifest;
+  try {
+    const r = await fetch(`/api/items/${platform}/${itemId}/assets`);
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    manifest = await r.json();
+  } catch (err) {
+    showToast("Konnte Sprachstatus nicht laden: " + (err.message || err), "error");
+    return;
+  }
+  // status() liefert keine voll-detaillierten Captions; fuer den Editor brauchen
+  // wir den raw screenshot-Eintrag. Wir holen das ueber den /captions-PUT-
+  // Round-Trip ab — bei der ersten Anzeige sind die Werte aus master_caption
+  // + n_captions ableitbar; den Pro-Sprache-Text holen wir on-demand pro Feld
+  // ueber das /caption-API.
+  // Pragma: zur initialen Befuellung des Modals nutzen wir einen Read-Endpoint —
+  // /assets liefert nur Aggregate. Workaround: per Sprache GET ueber das
+  // file-Endpoint (HEAD) + caption-Status koennen wir aus dem `status`-Aggregate
+  // nicht ablesen. Wir holen die Details ueber einen neuen, leichten Read:
+  let captions = {};
+  let hasOverride = {};
+  try {
+    const r = await fetch(`/api/items/${platform}/${itemId}/assets/screenshots/${shotId}/details`);
+    if (r.ok) {
+      const j = await r.json();
+      captions = j.captions || {};
+      hasOverride = j.has_override || {};
+    }
+  } catch (_) { /* details-Endpoint kann fehlen -> Modal funktioniert trotzdem */ }
+
+  const rows = targetLangs.map(l => {
+    const lab = state.langByCode[l]?.display || l;
+    const cap = captions[l] || "";
+    const ov = hasOverride[l] ? `<span class="muted">Override</span>` : `<span class="muted">faellt auf Standard zurueck</span>`;
+    return `<tr data-lang="${l}">
+      <td><span class="lang-tag">${escapeHtml(l)}</span> ${escapeHtml(lab)}</td>
+      <td><input type="text" class="lang-cap" data-lang="${l}" value="${escapeHtml(cap)}" placeholder="(leer)"></td>
+      <td>
+        <label class="btn small">⬆ Bild<input type="file" class="lang-override-file" data-lang="${l}" hidden accept="image/png,image/jpeg"></label>
+        ${hasOverride[l] ? `<button class="btn small del" data-lang-clear="${l}" title="Override entfernen">🗑</button>` : ""}
+        <div class="lang-override-state">${ov}</div>
+      </td>
+    </tr>`;
+  }).join("");
+
+  showModal(`
+    <h2>Screenshot #${shotId} — Per-Sprache</h2>
+    <p class="muted">Captions werden beim ZIP-Export pro Sprache verwendet. Bild-Overrides werden nur fuer die jeweilige Sprache exportiert, sonst gilt das Standard-Bild.</p>
+    <table class="lang-edit-table"><thead><tr><th>Sprache</th><th>Caption</th><th>Bild-Override</th></tr></thead><tbody>${rows || '<tr><td colspan="3" class="muted">Keine Zielsprachen aktiv.</td></tr>'}</tbody></table>
+    <div class="modal-actions">
+      <button class="btn" id="btn-shot-langs-close">Schliessen</button>
+    </div>
+  `);
+
+  document.getElementById("btn-shot-langs-close").addEventListener("click", async () => {
+    closeModal();
+    // Status neu laden (Counter koennen sich geaendert haben)
+    delete state.itemCache[state.currentItemKey];
+    await renderGrafiken(it);
+  });
+
+  const saveCaption = async (lang, text) => {
+    const r = await fetch(`/api/items/${platform}/${itemId}/assets/screenshots/${shotId}/caption`, {
+      method: "PUT", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text, lang }),
+    });
+    if (!r.ok) {
+      let detail = `HTTP ${r.status}`;
+      try { const b = await r.json(); if (b && b.detail) detail = b.detail; } catch (_) {}
+      showToast("Caption speichern fehlgeschlagen: " + detail, "error");
+      return false;
+    }
+    return true;
+  };
+
+  for (const inp of document.querySelectorAll(".lang-cap")) {
+    inp.addEventListener("blur", async e => {
+      if (await saveCaption(e.target.dataset.lang, e.target.value)) flashOk(e.target);
+    });
+  }
+  for (const fi of document.querySelectorAll(".lang-override-file")) {
+    fi.addEventListener("change", async e => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const lang = e.target.dataset.lang;
+      const fd = new FormData();
+      fd.append("file", file);
+      fd.append("lang", lang);
+      const r = await fetch(`/api/items/${platform}/${itemId}/assets/screenshots/${shotId}/override`, {
+        method: "POST", body: fd,
+      });
+      if (!r.ok) {
+        let detail = `HTTP ${r.status}`;
+        try { const b = await r.json(); if (b && b.detail) detail = b.detail; } catch (_) {}
+        showToast("Override-Upload fehlgeschlagen: " + detail, "error");
+        return;
+      }
+      showToast(`Override fuer ${lang} gespeichert`, "ok");
+      closeModal();
+      await openScreenshotLangsModal(it, shotId);
+    });
+  }
+  for (const b of document.querySelectorAll("[data-lang-clear]")) {
+    b.addEventListener("click", async () => {
+      const lang = b.dataset.langClear;
+      if (!confirm(`Override fuer ${lang} loeschen?`)) return;
+      // Override-Loeschen-Endpoint existiert nicht direkt; fallback: DELETE Screenshot ist zu hart.
+      // Wir loeschen die Datei via screenshot override mit lang-Parameter? Es gibt
+      // keinen dedizierten Endpoint dafuer; Workaround: caption setzen auf "" wuerde
+      // nicht greifen. Wir nutzen das gleiche Caption-Endpoint nicht; stattdessen
+      // schicken wir eine spezielle DELETE-Variante.
+      const r = await fetch(`/api/items/${platform}/${itemId}/assets/screenshots/${shotId}/override?lang=${encodeURIComponent(lang)}`, { method: "DELETE" });
+      if (!r.ok) {
+        let detail = `HTTP ${r.status}`;
+        try { const b2 = await r.json(); if (b2 && b2.detail) detail = b2.detail; } catch (_) {}
+        showToast("Override loeschen fehlgeschlagen: " + detail, "error");
+        return;
+      }
+      showToast("Override entfernt", "ok");
+      closeModal();
+      await openScreenshotLangsModal(it, shotId);
+    });
+  }
 }
 
 // --- Modal: Sprachen ---------------------------------------------------------

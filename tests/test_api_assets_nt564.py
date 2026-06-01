@@ -166,3 +166,124 @@ def test_export_zip(client_and_item) -> None:
 def test_export_zip_bad_lang_400(client_and_item) -> None:
     client, _ = client_and_item
     assert client.get("/api/items/steam/1141975/assets/export.zip?lang=klingon").status_code == 400
+
+
+# --- NT-564 Pass 2 (Lisbeth 17:17) -------------------------------------------
+
+def test_corrupted_manifest_returns_422(client_and_item) -> None:
+    """LOW FUNCTIONAL: kaputte manifest.json -> 422 statt 500."""
+    client, idir = client_and_item
+    (idir / "assets").mkdir()
+    (idir / "assets" / "manifest.json").write_text("{ not json", encoding="utf-8")
+    r = client.get("/api/items/steam/1141975/assets")
+    assert r.status_code == 422
+    assert "manifest.json" in r.json()["detail"]
+
+
+def test_store_asset_lying_extension_persists_real_format(client_and_item) -> None:
+    """MEDIUM FUNCTIONAL: JPEG-Bytes als .png hochgeladen -> Datei landet als .jpg."""
+    client, idir = client_and_item
+    r = client.post(
+        "/api/items/steam/1141975/assets/header_capsule",
+        files={"file": ("liar.png", _jpg(460, 215), "image/png")},
+    )
+    assert r.status_code == 200, r.text
+    entry = r.json()["entry"]
+    assert entry["filename"].endswith(".jpg")
+    assert entry["fmt"] == "jpg"
+    # File-Endpoint liefert das echte JPEG
+    fr = client.get("/api/items/steam/1141975/assets/header_capsule/file")
+    assert fr.status_code == 200
+
+
+def test_screenshot_details_endpoint(client_and_item) -> None:
+    client, _ = client_and_item
+    add = client.post(
+        "/api/items/steam/1141975/assets/screenshots",
+        files={"file": ("a.jpg", _jpg(1920, 1080), "image/jpeg")},
+        data={"master_caption": "Tor!"},
+    )
+    sid = add.json()["screenshot"]["id"]
+    client.post(
+        f"/api/items/steam/1141975/assets/screenshots/{sid}/override",
+        files={"file": ("a.jpg", _jpg(1920, 1080), "image/jpeg")},
+        data={"lang": "english"},
+    )
+    client.put(
+        f"/api/items/steam/1141975/assets/screenshots/{sid}/caption",
+        json={"text": "Goal!", "lang": "english"},
+    )
+    r = client.get(f"/api/items/steam/1141975/assets/screenshots/{sid}/details")
+    assert r.status_code == 200
+    d = r.json()
+    assert d["master_caption"] == "Tor!"
+    assert d["captions"] == {"english": "Goal!"}
+    assert d["has_override"] == {"english": True}
+
+
+def test_screenshot_override_delete(client_and_item) -> None:
+    client, _ = client_and_item
+    add = client.post(
+        "/api/items/steam/1141975/assets/screenshots",
+        files={"file": ("a.jpg", _jpg(1920, 1080), "image/jpeg")},
+    )
+    sid = add.json()["screenshot"]["id"]
+    client.post(
+        f"/api/items/steam/1141975/assets/screenshots/{sid}/override",
+        files={"file": ("a.jpg", _jpg(1920, 1080), "image/jpeg")},
+        data={"lang": "english"},
+    )
+    r = client.delete(f"/api/items/steam/1141975/assets/screenshots/{sid}/override?lang=english")
+    assert r.status_code == 200
+    # zweiter Aufruf -> 404 weil weg
+    r2 = client.delete(f"/api/items/steam/1141975/assets/screenshots/{sid}/override?lang=english")
+    assert r2.status_code == 404
+
+
+def test_translate_captions_endpoint(client_and_item, monkeypatch) -> None:
+    """MEDIUM FUNCTIONAL: caption-translation-Endpoint nutzt Translator-Engine."""
+    client, _ = client_and_item
+    # Mock-Translator zwingen, damit kein echter Claude-Call passiert
+    monkeypatch.setenv("SID_TRANSLATOR", "mock")
+    add = client.post(
+        "/api/items/steam/1141975/assets/screenshots",
+        files={"file": ("a.jpg", _jpg(1920, 1080), "image/jpeg")},
+        data={"master_caption": "Tor!"},
+    )
+    sid = add.json()["screenshot"]["id"]
+    r = client.post(
+        f"/api/items/steam/1141975/assets/screenshots/{sid}/translate-captions",
+        json={"engine": "mock"},
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    # active_languages = german (master) + french + english -> targets = french, english
+    assert set(body["written"].keys()) == {"french", "english"}
+    assert body["written"]["english"].startswith("[ENGLISH]")
+
+
+def test_translate_captions_overwrite_flag(client_and_item) -> None:
+    """overwrite_existing=true ueberschreibt manuelle captions."""
+    client, _ = client_and_item
+    add = client.post(
+        "/api/items/steam/1141975/assets/screenshots",
+        files={"file": ("a.jpg", _jpg(1920, 1080), "image/jpeg")},
+        data={"master_caption": "Tor!"},
+    )
+    sid = add.json()["screenshot"]["id"]
+    client.put(
+        f"/api/items/steam/1141975/assets/screenshots/{sid}/caption",
+        json={"text": "Manual", "lang": "english"},
+    )
+    # ohne overwrite: english bleibt manuell
+    r1 = client.post(
+        f"/api/items/steam/1141975/assets/screenshots/{sid}/translate-captions",
+        json={"engine": "mock", "target_langs": ["english"]},
+    )
+    assert "english" not in r1.json()["written"]
+    # mit overwrite: english wird ueberschrieben
+    r2 = client.post(
+        f"/api/items/steam/1141975/assets/screenshots/{sid}/translate-captions",
+        json={"engine": "mock", "target_langs": ["english"], "overwrite_existing": True},
+    )
+    assert r2.json()["written"]["english"].startswith("[ENGLISH]")

@@ -194,3 +194,142 @@ def test_export_zip_unknown_lang_raises(tmp_path: Path) -> None:
     idir = _item(tmp_path)
     with pytest.raises(ValueError):
         assets.export_zip(idir, "klingon")
+
+
+# --- NT-564 Pass 2 (Lisbeth 17:17) -------------------------------------------
+
+def test_load_manifest_corrupt_raises_manifest_corrupt_error(tmp_path: Path) -> None:
+    """LOW FUNCTIONAL: kaputte manifest.json -> kontrollierte Exception."""
+    idir = _item(tmp_path)
+    (idir / "assets").mkdir(exist_ok=True)
+    (idir / "assets" / "manifest.json").write_text("{ this is not json",
+                                                   encoding="utf-8")
+    with pytest.raises(assets.ManifestCorruptError):
+        assets.load_manifest(idir)
+
+
+def test_load_manifest_schema_mismatch_raises_manifest_corrupt_error(tmp_path: Path) -> None:
+    """Pydantic ValidationError -> ManifestCorruptError (statt 500)."""
+    idir = _item(tmp_path)
+    (idir / "assets").mkdir(exist_ok=True)
+    # screenshots muss eine Liste sein, kein dict
+    (idir / "assets" / "manifest.json").write_text(
+        '{"schema_version":1,"item_id":"x","screenshots":{"bad":"shape"}}',
+        encoding="utf-8",
+    )
+    with pytest.raises(assets.ManifestCorruptError):
+        assets.load_manifest(idir)
+
+
+def test_store_asset_uses_detected_format_when_client_lies(tmp_path: Path) -> None:
+    """MEDIUM FUNCTIONAL: JPEG-Bytes als .png hochgeladen -> wird als .jpg abgelegt."""
+    idir = _item(tmp_path)
+    slot = assets.SLOTS_BY_KEY["header_capsule"]
+    # JPEG-Bytes, aber Client behauptet die Endung sei png
+    jpg_bytes = _jpg(slot.width, slot.height)
+    entry = assets.store_asset(idir, "header_capsule", jpg_bytes, ext="png")
+    # Pillow erkennt JPEG, also wird die Datei als .jpg gespeichert.
+    assert entry.filename.endswith(".jpg")
+    assert entry.fmt == "jpg"
+    p = idir / "assets" / "header_capsule" / entry.filename
+    assert p.exists()
+
+
+def test_store_asset_detected_format_must_be_allowed(tmp_path: Path) -> None:
+    """Format detected by Pillow muss in slot.formats sein.
+
+    library_logo erlaubt nur png. JPEG-Bytes muessen also als 400-ValueError
+    rauskommen, nicht stumpf als .jpg gespeichert.
+    """
+    idir = _item(tmp_path)
+    slot = assets.SLOTS_BY_KEY["library_logo"]
+    assert slot.formats == ("png",)
+    jpg_bytes = _jpg(slot.width, slot.height)
+    with pytest.raises(ValueError):
+        assets.store_asset(idir, "library_logo", jpg_bytes, ext="png")
+
+
+def test_translate_screenshot_captions_skips_filled(tmp_path: Path) -> None:
+    """MEDIUM FUNCTIONAL: translate-pipeline-Wiring."""
+    idir = _item(tmp_path)
+    w, h = assets.SCREENSHOT_TARGET
+    shot = assets.add_screenshot(idir, _jpg(w, h), ext="jpg", master_caption="Tor!")
+    # english bereits gesetzt -> bleibt unangetastet; french leer -> wird gefuellt
+    assets.set_screenshot_caption(idir, shot.id, "Manual goal!", lang="english")
+    calls = []
+    def fake_tx(lang: str, text: str) -> str:
+        calls.append((lang, text))
+        return f"[{lang}] {text}"
+    written = assets.translate_screenshot_captions(
+        idir, shot.id,
+        target_langs=["english", "french"],
+        translate_fn=fake_tx,
+    )
+    assert "english" not in written            # manuelle caption bleibt
+    assert written["french"] == "[french] Tor!"
+    assert calls == [("french", "Tor!")]       # english nicht aufgerufen
+    m = assets.load_manifest(idir)
+    sh = next(s for s in m.screenshots if s.id == shot.id)
+    assert sh.captions["english"] == "Manual goal!"
+    assert sh.captions["french"] == "[french] Tor!"
+
+
+def test_translate_screenshot_captions_overwrite(tmp_path: Path) -> None:
+    """overwrite_existing=True bricht den 'nur leere'-Schutz."""
+    idir = _item(tmp_path)
+    w, h = assets.SCREENSHOT_TARGET
+    shot = assets.add_screenshot(idir, _jpg(w, h), ext="jpg", master_caption="Tor!")
+    assets.set_screenshot_caption(idir, shot.id, "Old", lang="english")
+    written = assets.translate_screenshot_captions(
+        idir, shot.id,
+        target_langs=["english"],
+        translate_fn=lambda l, t: f"[{l}] {t}",
+        overwrite_existing=True,
+    )
+    assert written["english"] == "[english] Tor!"
+    m = assets.load_manifest(idir)
+    sh = next(s for s in m.screenshots if s.id == shot.id)
+    assert sh.captions["english"] == "[english] Tor!"
+
+
+def test_translate_screenshot_captions_empty_master(tmp_path: Path) -> None:
+    """Leerer master_caption -> Translator wird nicht aufgerufen, keine writes."""
+    idir = _item(tmp_path)
+    w, h = assets.SCREENSHOT_TARGET
+    shot = assets.add_screenshot(idir, _jpg(w, h), ext="jpg")
+    called = []
+    written = assets.translate_screenshot_captions(
+        idir, shot.id,
+        target_langs=["english", "french"],
+        translate_fn=lambda l, t: called.append(l) or "X",
+    )
+    assert written == {}
+    assert called == []
+
+
+def test_delete_screenshot_override(tmp_path: Path) -> None:
+    """delete_screenshot_override entfernt nur den Per-Sprache-Eintrag."""
+    idir = _item(tmp_path)
+    w, h = assets.SCREENSHOT_TARGET
+    shot = assets.add_screenshot(idir, _jpg(w, h), ext="jpg")
+    assets.set_screenshot_override(idir, shot.id, "german", _jpg(w, h), ext="jpg")
+    assert assets.delete_screenshot_override(idir, shot.id, "german") is True
+    m = assets.load_manifest(idir)
+    sh = next(s for s in m.screenshots if s.id == shot.id)
+    assert "german" not in sh.localized
+    # Default-Bild ist NICHT betroffen
+    assert sh.default is not None
+
+
+def test_get_screenshot_details(tmp_path: Path) -> None:
+    """get_screenshot_details liefert captions + has_override fuer UI."""
+    idir = _item(tmp_path)
+    w, h = assets.SCREENSHOT_TARGET
+    shot = assets.add_screenshot(idir, _jpg(w, h), ext="jpg", master_caption="Tor!")
+    assets.set_screenshot_caption(idir, shot.id, "Goal!", lang="english")
+    assets.set_screenshot_override(idir, shot.id, "german", _jpg(w, h), ext="jpg")
+    d = assets.get_screenshot_details(idir, shot.id)
+    assert d["master_caption"] == "Tor!"
+    assert d["captions"] == {"english": "Goal!"}
+    assert d["has_override"] == {"german": True}
+    assert d["has_default"] is True

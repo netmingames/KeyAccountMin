@@ -960,11 +960,16 @@ def api_translate_screenshot_captions(
 
     # NT-563 (Lisbeth 18:03 LOW FUNCTIONAL): glossary.json kontrolliert laden —
     # ein korruptes Glossar darf nicht als 500 durchschlagen, sondern als 422.
+    # NT-563 (Lisbeth 18:03/18:39 LOW FUNCTIONAL): Glossar kontrolliert laden UND
+    # formatieren. to_prompt_block() lief vorher ausserhalb des try -> ein
+    # JSON-valides aber schema-kaputtes Glossar (z.B. entries mit Nicht-Dicts)
+    # schlug als 500 durch. Beides im try, breiter Catch -> 422.
     try:
         g = glossary_mod.load(idir)
-    except (json.JSONDecodeError, OSError, UnicodeDecodeError, ValidationError) as e:
-        raise HTTPException(status_code=422, detail=f"glossary.json unlesbar: {e}")
-    glossary_block = glossary_mod.to_prompt_block(g)
+        glossary_block = glossary_mod.to_prompt_block(g)
+    except (json.JSONDecodeError, OSError, UnicodeDecodeError, ValidationError,
+            ValueError, TypeError, KeyError, AttributeError) as e:
+        raise HTTPException(status_code=422, detail=f"glossary.json unlesbar/ungueltig: {e}")
 
     def translate_one(lang: str, text: str) -> str | None:
         """Einzel-Caption durch den Translator schicken — Engine-API ist

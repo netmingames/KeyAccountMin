@@ -614,9 +614,11 @@ async function renderGrafiken(it) {
         const disp = state.langByCode[lang]?.iso || lang;
         const clear = mode === "override"
           ? `<button class="chip-clear" data-clear-slot="${slot.key}" data-clear-lang="${lang}" title="Override entfernen">×</button>` : "";
-        const badge = (mode === "override" && sizeOk === false)
+        // NT-564 (Lisbeth 18:45): Maß-Badge auch zeigen, wenn eine Sprache auf
+        // ein zu kleines DEFAULT-Bild zurueckfaellt — nicht nur bei Override.
+        const badge = (sizeOk === false)
           ? `<span class="chip-warn" title="${escapeHtml(warnings.join(" / ") || "Maß/Format weicht vom Soll ab")}">⚠</span>` : "";
-        const chipCls = (mode === "override" && sizeOk === false) ? `${mode} stale` : mode;
+        const chipCls = (sizeOk === false) ? `${mode} stale` : mode;
         return `<span class="lang-chip ${chipCls}">
           <label class="chip-up" title="Override fuer ${escapeHtml(disp)} hochladen">${escapeHtml(disp)}
             ${fileInput(`data-slot="${slot.key}" data-lang="${lang}"`)}

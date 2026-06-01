@@ -717,6 +717,11 @@ def status(idir: Path, active_langs: list[str]) -> dict:
             row["n_override"] = sum(1 for v in per_lang.values() if v["mode"] == "override")
         slot_rows.append(row)
 
+    # NT-563/564 (Lisbeth 18:39/18:45 LOW FUNCTIONAL): Screenshot-n_overrides nur
+    # fuer existierende Override-Dateien zaehlen — verwaiste Manifest-Eintraege
+    # zaehlen wie in resolve_asset()/get_screenshot_details()/export_zip() nicht mehr.
+    _sdir = _assets_dir(idir) / "screenshots"
+
     return {
         "slots": slot_rows,
         "screenshots": {
@@ -726,7 +731,7 @@ def status(idir: Path, active_langs: list[str]) -> dict:
                     "id": s.id, "order": s.order,
                     "has_default": s.default is not None,
                     "size_ok": s.default.size_ok if s.default else None,
-                    "n_overrides": len(s.localized),
+                    "n_overrides": sum(1 for af in s.localized.values() if (_sdir / af.filename).exists()),
                     "master_caption": s.master_caption,
                     "n_captions": len(s.captions),
                 }

@@ -1,0 +1,134 @@
+{
+  "schema_version": 1,
+  "item_id": "379387",
+  "lang": "latam",
+  "fields": {
+    "short_description": {
+      "value": "",
+      "source_hash": "",
+      "stale": true,
+      "manually_edited": false,
+      "last_translated_at": ""
+    },
+    "about": {
+      "value": "",
+      "source_hash": "",
+      "stale": true,
+      "manually_edited": false,
+      "last_translated_at": ""
+    },
+    "sysreqs_min_osversion": {
+      "value": "",
+      "source_hash": "",
+      "stale": true,
+      "manually_edited": false,
+      "last_translated_at": ""
+    },
+    "sysreqs_min_processor": {
+      "value": "",
+      "source_hash": "",
+      "stale": true,
+      "manually_edited": false,
+      "last_translated_at": ""
+    },
+    "sysreqs_min_memory": {
+      "value": "",
+      "source_hash": "",
+      "stale": true,
+      "manually_edited": false,
+      "last_translated_at": ""
+    },
+    "sysreqs_min_graphics": {
+      "value": "",
+      "source_hash": "",
+      "stale": true,
+      "manually_edited": false,
+      "last_translated_at": ""
+    },
+    "sysreqs_min_storage": {
+      "value": "",
+      "source_hash": "",
+      "stale": true,
+      "manually_edited": false,
+      "last_translated_at": ""
+    },
+    "sysreqs_rec_osversion": {
+      "value": "",
+      "source_hash": "",
+      "stale": true,
+      "manually_edited": false,
+      "last_translated_at": ""
+    },
+    "sysreqs_rec_processor": {
+      "value": "",
+      "source_hash": "",
+      "stale": true,
+      "manually_edited": false,
+      "last_translated_at": ""
+    },
+    "sysreqs_rec_memory": {
+      "value": "",
+      "source_hash": "",
+      "stale": true,
+      "manually_edited": false,
+      "last_translated_at": ""
+    },
+    "sysreqs_rec_graphics": {
+      "value": "",
+      "source_hash": "",
+      "stale": true,
+      "manually_edited": false,
+      "last_translated_at": ""
+    },
+    "sysreqs_rec_storage": {
+      "value": "",
+      "source_hash": "",
+      "stale": true,
+      "manually_edited": false,
+      "last_translated_at": ""
+    },
+    "ea_why": {
+      "value": "",
+      "source_hash": "",
+      "stale": true,
+      "manually_edited": false,
+      "last_translated_at": ""
+    },
+    "ea_duration": {
+      "value": "",
+      "source_hash": "",
+      "stale": true,
+      "manually_edited": false,
+      "last_translated_at": ""
+    },
+    "ea_difference": {
+      "value": "",
+      "source_hash": "",
+      "stale": true,
+      "manually_edited": false,
+      "last_translated_at": ""
+    },
+    "ea_state": {
+      "value": "",
+      "source_hash": "",
+      "stale": true,
+      "manually_edited": false,
+      "last_translated_at": ""
+    },
+    "ea_pricing": {
+      "value": "",
+      "source_hash": "",
+      "stale": true,
+      "manually_edited": false,
+      "last_translated_at": ""
+    },
+    "ea_community": {
+      "value": "",
+      "source_hash": "",
+      "stale": true,
+      "manually_edited": false,
+      "last_translated_at": ""
+    }
+  },
+  "updated_at": "2026-06-01T16:27:50"
+}

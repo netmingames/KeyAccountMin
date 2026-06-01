@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "entries": [
+    {
+      "term": "Goalgetter",
+      "rule": "keep",
+      "note": "Steam-Spieltitel — in allen Sprachen woertlich uebernehmen, nicht uebersetzen"
+    },
+    {
+      "term": "netmin games",
+      "rule": "keep",
+      "note": "Firmenname"
+    },
+    {
+      "term": "Steam",
+      "rule": "keep",
+      "note": "Plattformname"
+    },
+    {
+      "term": "Ailton",
+      "rule": "keep",
+      "note": "Eigenname (Ex-Profi, 'Frag Ailton'/'Ask Ailton'-Feature) — nicht uebersetzen"
+    }
+  ]
+}

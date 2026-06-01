@@ -665,3 +665,12 @@ dialog#modal::backdrop {
 .lang-pill .flag { font-size: 0.9em; }
 
 .bt-select-buttons { display: flex; gap: 0.4rem; margin-bottom: 0.5rem; }
+
+.lang-avail-sep { margin-left: 0.3rem; }
+.lang-pill.inactive {
+  opacity: 0.5;
+  border-style: dashed;
+  font-size: 0.78em;
+  padding: 0.12rem 0.45rem;
+}
+.lang-pill.inactive:hover { opacity: 0.85; border-color: var(--accent); }

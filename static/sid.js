@@ -266,9 +266,15 @@ function renderInhalt(it, targetLangs) {
   // NT-568: Alle-Sprachen-Uebersicht — bisher sah man nur die Dropdown-Auswahl,
   // nicht den Gesamtstand. Jede aktive Zielsprache als klickbares Pill mit
   // Fuellstand (gefuellt/gesamt) + stale-/manuell-Badges.
-  const langOverview = targetLangs.length ? `
+  // NT-568 (Lisbeth 18:50): "ALLER Sprachen"-Uebersicht mit aktiv-vs-verfuegbar.
+  // Aktive Zielsprachen als volle Pills (klick = Zielsprache wechseln), die
+  // restlichen verfuegbaren Steam-Sprachen als gedimmte Chips (klick = Sprachen-
+  // Modal zum Aktivieren). Master (DE) steht separat im Header.
+  const activeSet = new Set(it.meta.active_languages);
+  const inactiveLangs = state.languages.map(l => l.code).filter(c => !activeSet.has(c));
+  const langOverview = (targetLangs.length || inactiveLangs.length) ? `
     <div class="lang-overview">
-      <span class="muted">Sprachen:</span>
+      <span class="muted">Aktiv:</span>
       ${targetLangs.map(code => {
         const s = it.translations[code] || {};
         const fill = (s.filled != null && s.total != null) ? `${s.filled}/${s.total}` : "";
@@ -277,6 +283,8 @@ function renderInhalt(it, targetLangs) {
         const act = code === state.currentTargetLang ? " active" : "";
         return `<button class="lang-pill${act}" data-lang-pill="${code}" title="${escapeHtml(state.langByCode[code]?.display || code)}">${escapeHtml(state.langByCode[code]?.iso || code)} <span class="muted">${fill}</span>${staleB}${manB}</button>`;
       }).join("")}
+      ${inactiveLangs.length ? `<span class="muted lang-avail-sep">· Verfuegbar:</span>` + inactiveLangs.map(code =>
+        `<button class="lang-pill inactive" data-lang-activate="${code}" title="${escapeHtml(state.langByCode[code]?.display || code)} — aktivieren">${escapeHtml(state.langByCode[code]?.iso || code)}</button>`).join("") : ""}
     </div>` : "";
 
   return `
@@ -363,6 +371,10 @@ function bindInhaltHandlers(it) {
       delete state.itemCache[state.currentItemKey];
       await renderContent();
     });
+  }
+  // NT-568: Klick auf eine verfuegbare (inaktive) Sprache oeffnet das Sprachen-Modal.
+  for (const pill of document.querySelectorAll("[data-lang-activate]")) {
+    pill.addEventListener("click", () => openLanguagesModal());
   }
 
   const langsInline = document.getElementById("btn-langs-inline");
@@ -1181,7 +1193,9 @@ async function openTranslateAllModal(it) {
   const langRows = targetLangs.map(code => {
     const l = state.langByCode[code];
     const s = it.translations[code] || {};
-    const needs = (s.stale || 0) > 0;
+    // NT-565/568 (Lisbeth 18:49/18:50): auch Sprachen OHNE Translation-Datei
+    // vorauswaehlen (frische Locales brauchen einen vollen Lauf).
+    const needs = !it.translations[code] || (s.stale || 0) > 0;
     const info = (s.filled != null && s.total != null)
       ? `${s.filled}/${s.total}${s.stale ? `, ${s.stale} stale` : ""}` : "";
     return `<tr data-lang="${code}">
@@ -1218,7 +1232,7 @@ async function openTranslateAllModal(it) {
   document.getElementById("bt-sel-none").addEventListener("click", () => setAll(false));
   document.getElementById("bt-sel-stale").addEventListener("click", () => {
     for (const c of document.querySelectorAll(".bt-lang")) {
-      c.checked = ((it.translations[c.value] || {}).stale || 0) > 0;
+      c.checked = !it.translations[c.value] || ((it.translations[c.value] || {}).stale || 0) > 0;
     }
   });
 

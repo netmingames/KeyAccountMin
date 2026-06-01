@@ -506,15 +506,20 @@ def _stale_or_empty_fields(idir: Path, lang: str) -> list[str]:
     sind alle Content-Felder faellig.
     """
     master = edit_ops.read_master(idir)
+    content = [f for f, v in master.fields.items() if v]
     tpath = storage.translation_path(idir, lang)
-    t = edit_ops.read_translation(idir, lang) if tpath.exists() else None
+    if not tpath.exists():
+        return content
+    # NT-565 (Lisbeth 18:49 MEDIUM FUNCTIONAL): korrupte/schema-invalide
+    # Translation darf hier nicht als 500 durchschlagen — als komplett faellig
+    # behandeln; der eigentliche translate_item_lang-Aufruf meldet den Fehler
+    # dann sauber als per-Sprache-Fehler im Stream.
+    try:
+        t = edit_ops.read_translation(idir, lang)
+    except Exception:  # noqa: BLE001
+        return content
     out: list[str] = []
-    for f, v in master.fields.items():
-        if not v:
-            continue
-        if t is None:
-            out.append(f)
-            continue
+    for f in content:
         tf = t.fields.get(f)
         if tf is None or not tf.value or tf.stale:
             out.append(f)

@@ -177,8 +177,9 @@ def test_status_reports_per_lang_resolution(tmp_path: Path) -> None:
                        lang="german", ext="png")
     st = assets.status(idir, ["german", "english", "french"])
     row = next(r for r in st["slots"] if r["key"] == "header_capsule")
-    assert row["per_lang"]["german"] == "override"
-    assert row["per_lang"]["english"] == "default"
+    # NT-564 Pass 3: per_lang ist jetzt dict mit mode/size_ok/warnings.
+    assert row["per_lang"]["german"]["mode"] == "override"
+    assert row["per_lang"]["english"]["mode"] == "default"
     assert row["n_override"] == 1
 
 
@@ -343,3 +344,104 @@ def test_get_screenshot_details(tmp_path: Path) -> None:
     assert d["captions"] == {"english": "Goal!"}
     assert d["has_override"] == {"german": True}
     assert d["has_default"] is True
+
+
+# --- NT-564 Pass 3 (Lisbeth 17:40) -------------------------------------------
+
+def test_store_asset_accepts_correct_bytes_with_wrong_extension(tmp_path: Path) -> None:
+    """MEDIUM FUNCTIONAL: gueltiges PNG mit .jpg-Endung muss durchgehen.
+
+    library_logo erlaubt nur png. PNG-Bytes als .jpg hochgeladen wurde
+    vorher wegen `_check_ext` BEVOR Pillow-Detection abgewiesen. Jetzt
+    erkennt Pillow PNG zuerst, der Effective-Ext ist 'png' und der Upload
+    landet sauber als default.png.
+    """
+    idir = _item(tmp_path)
+    slot = assets.SLOTS_BY_KEY["library_logo"]
+    png_bytes = _png(slot.width, slot.height)
+    entry = assets.store_asset(idir, "library_logo", png_bytes, ext="jpg")
+    assert entry.filename.endswith(".png")
+    assert entry.fmt == "png"
+    p = idir / "assets" / "library_logo" / entry.filename
+    assert p.exists()
+
+
+def test_add_screenshot_accepts_correct_bytes_with_wrong_extension(tmp_path: Path) -> None:
+    """Gleiche Logik wie store_asset auch fuer Screenshots."""
+    idir = _item(tmp_path)
+    w, h = assets.SCREENSHOT_TARGET
+    jpg_bytes = _jpg(w, h)
+    shot = assets.add_screenshot(idir, jpg_bytes, ext="png")  # luegt: jpg-Bytes als png
+    assert shot.default is not None
+    assert shot.default.filename.endswith(".jpg")
+    assert shot.default.fmt == "jpg"
+
+
+def test_set_screenshot_override_accepts_correct_bytes_with_wrong_extension(tmp_path: Path) -> None:
+    """Override-Upload erlaubt jetzt auch Bytes/Endung-Diskrepanz."""
+    idir = _item(tmp_path)
+    w, h = assets.SCREENSHOT_TARGET
+    shot = assets.add_screenshot(idir, _jpg(w, h), ext="jpg")
+    png_bytes = _png(w, h)
+    out = assets.set_screenshot_override(idir, shot.id, "german", png_bytes, ext="jpg")
+    ov = out.localized["german"]
+    assert ov.filename.endswith(".png")
+    assert ov.fmt == "png"
+
+
+def test_resolve_asset_falls_back_to_default_if_override_file_missing(tmp_path: Path) -> None:
+    """MEDIUM FUNCTIONAL: stale Override (Datei weg, Manifest haelt Eintrag)
+    darf nicht None liefern, solange Default existiert."""
+    idir = _item(tmp_path)
+    slot = assets.SLOTS_BY_KEY["header_capsule"]
+    assets.store_asset(idir, "header_capsule", _png(slot.width, slot.height), ext="png")
+    assets.store_asset(idir, "header_capsule", _png(slot.width, slot.height),
+                       lang="german", ext="png")
+    # Override-Datei haendisch loeschen, Manifest belassen -> stale state
+    slot_dir = idir / "assets" / "header_capsule"
+    (slot_dir / "german.png").unlink()
+    assert (slot_dir / "german.png").exists() is False
+    p = assets.resolve_asset(idir, "header_capsule", "german")
+    assert p is not None
+    assert p.name == "default.png"
+
+
+def test_resolve_asset_returns_none_when_both_missing_on_disk(tmp_path: Path) -> None:
+    """Wenn weder Override noch Default auf Platte liegen, sauberes None."""
+    idir = _item(tmp_path)
+    slot = assets.SLOTS_BY_KEY["header_capsule"]
+    assets.store_asset(idir, "header_capsule", _png(slot.width, slot.height), ext="png")
+    slot_dir = idir / "assets" / "header_capsule"
+    (slot_dir / "default.png").unlink()
+    assert assets.resolve_asset(idir, "header_capsule", "german") is None
+
+
+def test_status_per_lang_exposes_size_ok_and_warnings_for_overrides(tmp_path: Path) -> None:
+    """LOW FUNCTIONAL: Status muss size_ok/warnings je Override-Sprache liefern,
+    damit der Grafiken-Tab das rote Badge auch fuer Per-Sprache-Uploads zeigt."""
+    idir = _item(tmp_path)
+    slot = assets.SLOTS_BY_KEY["header_capsule"]
+    # Default mit korrekter Groesse
+    assets.store_asset(idir, "header_capsule", _png(slot.width, slot.height), ext="png")
+    # Override mit FALSCHER Groesse -> Warnung + size_ok=False
+    assets.store_asset(idir, "header_capsule", _png(100, 50), lang="german", ext="png")
+    st = assets.status(idir, ["german", "english"])
+    row = next(r for r in st["slots"] if r["key"] == "header_capsule")
+    de = row["per_lang"]["german"]
+    en = row["per_lang"]["english"]
+    assert de["mode"] == "override"
+    assert de["size_ok"] is False
+    assert any("Maß" in w for w in de["warnings"])
+    # English faellt auf Default zurueck, Default-Size war ok
+    assert en["mode"] == "default"
+    assert en["size_ok"] is True
+    assert en["warnings"] == []
+
+
+def test_status_per_lang_missing_has_size_ok_none(tmp_path: Path) -> None:
+    """Wenn weder Override noch Default existieren: size_ok=None, mode=missing."""
+    idir = _item(tmp_path)
+    st = assets.status(idir, ["german"])
+    row = next(r for r in st["slots"] if r["key"] == "header_capsule")
+    assert row["per_lang"]["german"]["mode"] == "missing"
+    assert row["per_lang"]["german"]["size_ok"] is None

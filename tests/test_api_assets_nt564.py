@@ -72,7 +72,8 @@ def test_upload_default_and_status_and_file(client_and_item) -> None:
     row = next(s for s in st["slots"] if s["key"] == "header_capsule")
     assert row["has_default"] is True
     # header_capsule ist localizable -> per_lang fuer aktive Sprachen, alle auf default
-    assert row["per_lang"]["french"] == "default"
+    # NT-564 Pass 3: per_lang ist jetzt dict {mode,size_ok,warnings}.
+    assert row["per_lang"]["french"]["mode"] == "default"
 
     f = client.get("/api/items/steam/1141975/assets/header_capsule/file?lang=french")
     assert f.status_code == 200 and f.headers["content-type"].startswith("image/")
@@ -88,8 +89,8 @@ def test_override_precedence(client_and_item) -> None:
     assert r.status_code == 200, r.text
     st = client.get("/api/items/steam/1141975/assets").json()
     row = next(s for s in st["slots"] if s["key"] == "header_capsule")
-    assert row["per_lang"]["german"] == "override"
-    assert row["per_lang"]["french"] == "default"
+    assert row["per_lang"]["german"]["mode"] == "override"
+    assert row["per_lang"]["french"]["mode"] == "default"
 
 
 def test_non_localizable_override_rejected(client_and_item) -> None:

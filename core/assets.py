@@ -332,9 +332,12 @@ def store_asset(idir: Path, slot_key: str, data: bytes, *,
     if not slot.localizable and _lang_key(lang) != DEFAULT_KEY:
         raise ValueError(f"Slot {slot_key!r} ist sprachneutral — kein Per-Sprache-Override erlaubt")
     lk = _lang_key(lang)
-    # Client-supplied ext wird zwar gepruefet, aber nur als Fallback verwendet.
-    # Den echten Format-Wert liefert Pillow (s. _effective_ext).
-    _check_ext(ext, slot.formats)
+    # NT-564 Pass 3 (Lisbeth 17:40 MEDIUM FUNCTIONAL): vorher wurde der
+    # Client-supplied filename suffix BEVOR der Pillow-Inspektion gegen
+    # slot.formats validiert. Folge: ein valides PNG, das jemand als .jpg
+    # hochlaedt, wurde fuer einen png-only-Slot wie library_logo abgewiesen,
+    # obwohl die Bytes erlaubt sind. Jetzt zuerst Pillow als Ground Truth,
+    # dann _effective_ext (das selbst gegen slot.formats validiert).
     v = validate_image(data, target_w=slot.width, target_h=slot.height, formats=slot.formats)
     if not v.ok:
         raise ValueError(v.warnings[0] if v.warnings else "Kein lesbares Bild")
@@ -359,19 +362,38 @@ def store_asset(idir: Path, slot_key: str, data: bytes, *,
 
 
 def resolve_asset(idir: Path, slot_key: str, lang: str | None) -> Path | None:
-    """Liefert den Pfad des fuer `lang` gueltigen Bildes (Override sonst default)."""
+    """Liefert den Pfad des fuer `lang` gueltigen Bildes (Override sonst default).
+
+    NT-564 Pass 3 (Lisbeth 17:40 MEDIUM FUNCTIONAL): vorher hat ein im
+    Manifest verzeichneter Override, dessen Datei auf der Platte fehlt
+    (z.B. veralteter Eintrag nach manuellem rm), None zurueckgegeben —
+    obwohl ein gueltiges Default-Bild da war. Das hat den Default-
+    Fallback geredet, aber nicht eingehalten und konnte Preview/Export
+    auf stale-Overrides crashen lassen.
+
+    Reihenfolge jetzt:
+    1. Override fuer `lang` (wenn im Manifest UND Datei existiert).
+    2. Default (wenn im Manifest UND Datei existiert).
+    3. None.
+    """
     manifest = load_manifest(idir)
     st = manifest.slots.get(slot_key)
     if st is None:
         return None
     lk = _lang_key(lang)
-    entry = st.localized.get(lk) if lk != DEFAULT_KEY else None
-    if entry is None:
-        entry = st.default
-    if entry is None:
-        return None
-    p = _assets_dir(idir) / slot_key / entry.filename
-    return p if p.exists() else None
+    slot_dir = _assets_dir(idir) / slot_key
+    candidates: list[AssetFile] = []
+    if lk != DEFAULT_KEY:
+        ov = st.localized.get(lk)
+        if ov is not None:
+            candidates.append(ov)
+    if st.default is not None:
+        candidates.append(st.default)
+    for entry in candidates:
+        p = slot_dir / entry.filename
+        if p.exists():
+            return p
+    return None
 
 
 def delete_asset(idir: Path, slot_key: str, lang: str | None = None) -> bool:
@@ -400,8 +422,11 @@ def delete_asset(idir: Path, slot_key: str, lang: str | None = None) -> bool:
 
 def add_screenshot(idir: Path, data: bytes, *, ext: str,
                    master_caption: str = "") -> Screenshot:
-    """Fuegt einen neuen Screenshot hinten an (default-Bild)."""
-    _check_ext(ext, SCREENSHOT_FORMATS)
+    """Fuegt einen neuen Screenshot hinten an (default-Bild).
+
+    NT-564 Pass 3: ext-Check entfaellt vor validate_image, sonst werden
+    gueltige Bytes mit falscher Client-Endung abgewiesen (siehe store_asset).
+    """
     v = validate_image(data, target_w=SCREENSHOT_TARGET[0], target_h=SCREENSHOT_TARGET[1],
                        formats=SCREENSHOT_FORMATS)
     if not v.ok:
@@ -432,7 +457,7 @@ def set_screenshot_override(idir: Path, shot_id: int, lang: str, data: bytes, *,
     lk = _lang_key(lang)
     if lk == DEFAULT_KEY:
         raise ValueError("Override braucht eine echte Sprache (nicht default)")
-    _check_ext(ext, SCREENSHOT_FORMATS)
+    # NT-564 Pass 3: kein ext-Vorab-Check, Ground Truth = Pillow.
     v = validate_image(data, target_w=SCREENSHOT_TARGET[0], target_h=SCREENSHOT_TARGET[1],
                        formats=SCREENSHOT_FORMATS)
     if not v.ok:
@@ -629,16 +654,34 @@ def status(idir: Path, active_langs: list[str]) -> dict:
             "default_size_ok": st.default.size_ok if st.default else None,
         }
         if slot.localizable and langs:
-            per_lang = {}
+            # NT-564 Pass 3 (Lisbeth 17:40 LOW FUNCTIONAL): pro Sprache
+            # zusaetzlich size_ok + warnings rausreichen, damit der
+            # Grafiken-Tab das rote Maß-Badge auch fuer Per-Sprache-
+            # Uploads anzeigen kann. Wert pro Sprache ist jetzt ein
+            # Dict statt String — siehe sid.js (info.mode).
+            per_lang: dict[str, dict[str, Any]] = {}
             for lang in langs:
-                if lang in st.localized:
-                    per_lang[lang] = "override"
+                ov = st.localized.get(lang)
+                if ov is not None:
+                    per_lang[lang] = {
+                        "mode": "override",
+                        "size_ok": ov.size_ok,
+                        "warnings": list(ov.warnings),
+                    }
                 elif st.default is not None:
-                    per_lang[lang] = "default"
+                    per_lang[lang] = {
+                        "mode": "default",
+                        "size_ok": st.default.size_ok,
+                        "warnings": [],
+                    }
                 else:
-                    per_lang[lang] = "missing"
+                    per_lang[lang] = {
+                        "mode": "missing",
+                        "size_ok": None,
+                        "warnings": [],
+                    }
             row["per_lang"] = per_lang
-            row["n_override"] = sum(1 for v in per_lang.values() if v == "override")
+            row["n_override"] = sum(1 for v in per_lang.values() if v["mode"] == "override")
         slot_rows.append(row)
 
     return {

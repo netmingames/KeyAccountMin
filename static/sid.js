@@ -577,14 +577,24 @@ async function renderGrafiken(it) {
       ? `<span class="flag stale" title="Bildmaß weicht vom Soll ab">Maß ≠ Soll</span>` : "";
     let langRow = "";
     if (slot.localizable && st.per_lang) {
-      const chips = Object.entries(st.per_lang).map(([lang, mode]) => {
+      // NT-564 Pass 3: per_lang-Wert ist jetzt ein dict {mode,size_ok,warnings}
+      // (vorher nur String "override|default|missing"). Backwards-compatible:
+      // wenn aus aelterer API ein String kommt, in den alten Pfad zurueckfallen.
+      const chips = Object.entries(st.per_lang).map(([lang, info]) => {
+        const isObj = info && typeof info === "object";
+        const mode = isObj ? info.mode : info;
+        const sizeOk = isObj ? info.size_ok : null;
+        const warnings = (isObj && Array.isArray(info.warnings)) ? info.warnings : [];
         const disp = state.langByCode[lang]?.iso || lang;
         const clear = mode === "override"
           ? `<button class="chip-clear" data-clear-slot="${slot.key}" data-clear-lang="${lang}" title="Override entfernen">×</button>` : "";
-        return `<span class="lang-chip ${mode}">
+        const badge = (mode === "override" && sizeOk === false)
+          ? `<span class="chip-warn" title="${escapeHtml(warnings.join(" / ") || "Maß/Format weicht vom Soll ab")}">⚠</span>` : "";
+        const chipCls = (mode === "override" && sizeOk === false) ? `${mode} stale` : mode;
+        return `<span class="lang-chip ${chipCls}">
           <label class="chip-up" title="Override fuer ${escapeHtml(disp)} hochladen">${escapeHtml(disp)}
             ${fileInput(`data-slot="${slot.key}" data-lang="${lang}"`)}
-          </label>${clear}</span>`;
+          </label>${badge}${clear}</span>`;
       }).join("");
       langRow = `<div class="asset-langs"><span class="muted">Per-Sprache:</span> ${chips}</div>`;
     }

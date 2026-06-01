@@ -14,11 +14,13 @@ FIELD_META: dict[str, tuple[str, bool, str]] = {
     "sysreqs_min_memory":    ("Min. Systemanforderung - Arbeitsspeicher", False, "z.B. '2 GB RAM'."),
     "sysreqs_min_graphics":  ("Min. Systemanforderung - Grafik",        False, "z.B. 'OpenGL 2.0 fähig'."),
     "sysreqs_min_storage":   ("Min. Systemanforderung - Speicherplatz", False, "z.B. '500 MB freier Speicherplatz'."),
+    "sysreqs_min_soundcard": ("Min. Systemanforderung - Soundkarte",    False, "z.B. 'DirectX-kompatibel'."),
     "sysreqs_rec_osversion": ("Empfohlen - OS",                         False, ""),
     "sysreqs_rec_processor": ("Empfohlen - Prozessor",                  False, ""),
     "sysreqs_rec_memory":    ("Empfohlen - Arbeitsspeicher",            False, ""),
     "sysreqs_rec_graphics":  ("Empfohlen - Grafik",                     False, ""),
     "sysreqs_rec_storage":   ("Empfohlen - Speicherplatz",              False, ""),
+    "sysreqs_rec_soundcard": ("Empfohlen - Soundkarte",                 False, ""),
     # Early-Access-Felder (Steam-Backend separater Bereich, nicht im Loka-JSON)
     "ea_why":        ("Warum Early Access?",                                  True,  ""),
     "ea_duration":   ("Wie lange wird das Spiel im Early Access bleiben?",    True,  ""),

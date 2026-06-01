@@ -26,11 +26,13 @@ STEAM_TO_FIELD: dict[str, str] = {
     "app[content][sysreqs][windows][min][memory]":        "sysreqs_min_memory",
     "app[content][sysreqs][windows][min][graphics]":      "sysreqs_min_graphics",
     "app[content][sysreqs][windows][min][storage]":       "sysreqs_min_storage",
+    "app[content][sysreqs][windows][min][soundcard]":     "sysreqs_min_soundcard",
     "app[content][sysreqs][windows][rec][osversion]":     "sysreqs_rec_osversion",
     "app[content][sysreqs][windows][rec][processor]":     "sysreqs_rec_processor",
     "app[content][sysreqs][windows][rec][memory]":        "sysreqs_rec_memory",
     "app[content][sysreqs][windows][rec][graphics]":      "sysreqs_rec_graphics",
     "app[content][sysreqs][windows][rec][storage]":       "sysreqs_rec_storage",
+    "app[content][sysreqs][windows][rec][soundcard]":     "sysreqs_rec_soundcard",
 }
 
 FIELD_TO_STEAM: dict[str, str] = {v: k for k, v in STEAM_TO_FIELD.items()}

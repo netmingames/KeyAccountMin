@@ -91,11 +91,13 @@ STEAM_FIELDS_STANDARD: tuple[str, ...] = (
     "sysreqs_min_memory",
     "sysreqs_min_graphics",
     "sysreqs_min_storage",
+    "sysreqs_min_soundcard",
     "sysreqs_rec_osversion",
     "sysreqs_rec_processor",
     "sysreqs_rec_memory",
     "sysreqs_rec_graphics",
     "sysreqs_rec_storage",
+    "sysreqs_rec_soundcard",
 )
 
 # Early-Access-Q&A Felder — werden separat exportiert (nicht im Steam-Loka-JSON,

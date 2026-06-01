@@ -262,6 +262,27 @@ def test_translate_captions_endpoint(client_and_item, monkeypatch) -> None:
     assert body["written"]["english"].startswith("[ENGLISH]")
 
 
+def test_screenshot_file_route_uses_meta_pruefung(client_and_item) -> None:
+    """NT-563 Pass 3: screenshot file route lehnt malformed-item ab (konsistent
+    mit dem Rest der Asset-API), statt Binaerdaten auszuliefern."""
+    client, _ = client_and_item
+    # nicht existierendes Item -> 404 (statt 200 Binaerdaten)
+    r = client.get("/api/items/steam/9999999/assets/screenshots/1/file")
+    assert r.status_code == 404
+
+
+def test_reorder_endpoint_rejects_duplicates(client_and_item) -> None:
+    """NT-563 Pass 3: reorder mit Duplikaten -> 400."""
+    client, _ = client_and_item
+    client.post("/api/items/steam/1141975/assets/screenshots",
+                files={"file": ("a.jpg", _jpg(1920, 1080), "image/jpeg")})
+    client.post("/api/items/steam/1141975/assets/screenshots",
+                files={"file": ("b.jpg", _jpg(1920, 1080), "image/jpeg")})
+    r = client.put("/api/items/steam/1141975/assets/screenshots/reorder",
+                   json={"ordered_ids": [1, 1, 2]})
+    assert r.status_code == 400
+
+
 def test_translate_captions_overwrite_flag(client_and_item) -> None:
     """overwrite_existing=true ueberschreibt manuelle captions."""
     client, _ = client_and_item

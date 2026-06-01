@@ -517,10 +517,18 @@ def translate_screenshot_captions(
 
 
 def reorder_screenshots(idir: Path, ordered_ids: list[int]) -> list[Screenshot]:
-    """Setzt die Reihenfolge anhand der uebergebenen id-Liste."""
+    """Setzt die Reihenfolge anhand der uebergebenen id-Liste.
+
+    NT-563 Pass 3 (Lisbeth 17:25 LOW FUNCTIONAL): Vorher hat nur `set(...) ==
+    known` validiert — `[1,1,2]` gegen `{1,2}` waere durchgegangen und haette
+    eine inkonsistente Order-Map produziert. Jetzt zusaetzlich Laenge +
+    Eindeutigkeit pruefen.
+    """
     manifest = load_manifest(idir)
     known = {s.id for s in manifest.screenshots}
-    if set(ordered_ids) != known:
+    if len(ordered_ids) != len(set(ordered_ids)):
+        raise ValueError(f"ordered_ids enthaelt Duplikate: {ordered_ids}")
+    if len(ordered_ids) != len(known) or set(ordered_ids) != known:
         raise ValueError(f"ordered_ids {ordered_ids} != vorhandene {sorted(known)}")
     pos = {sid: i for i, sid in enumerate(ordered_ids)}
     for s in manifest.screenshots:

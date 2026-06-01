@@ -524,9 +524,25 @@ async function loadAndRenderTargetLang(it, lang) {
 
 async function ensureAssetsCatalog() {
   if (!state.assetsCatalog) {
-    state.assetsCatalog = (await fetch("/api/assets/catalog").then(r => r.json())).slots;
+    const r = await fetch("/api/assets/catalog");
+    if (!r.ok) throw new Error(`Catalog HTTP ${r.status}`);
+    state.assetsCatalog = (await r.json()).slots;
   }
   return state.assetsCatalog;
+}
+
+// NT-563 Pass 3 (Lisbeth 17:25 LOW FUNCTIONAL): /assets-Fetch ohne r.ok-Check
+// hat bei 422 (kaputte manifest.json) einfach das error-body als Status
+// gerendert — leere Cards statt klarem Hinweis. Jetzt: status separat
+// holen und auf 422-Detail einer ManifestCorruptError-Response reagieren.
+async function _fetchAssetsStatus(platform, itemId) {
+  const r = await fetch(`/api/items/${platform}/${itemId}/assets`);
+  if (!r.ok) {
+    let detail = `HTTP ${r.status}`;
+    try { const b = await r.json(); if (b && b.detail) detail = b.detail; } catch (_) {}
+    throw new Error(detail);
+  }
+  return r.json();
 }
 
 async function renderGrafiken(it) {
@@ -538,10 +554,10 @@ async function renderGrafiken(it) {
   try {
     [catalog, status] = await Promise.all([
       ensureAssetsCatalog(),
-      fetch(`/api/items/${platform}/${itemId}/assets`).then(r => r.json()),
+      _fetchAssetsStatus(platform, itemId),
     ]);
   } catch (err) {
-    main.innerHTML = `<div class="card error">Grafiken konnten nicht geladen werden: ${escapeHtml(String(err))}</div>`;
+    main.innerHTML = `<div class="card error">Grafiken konnten nicht geladen werden: ${escapeHtml(String(err.message || err))}</div>`;
     return;
   }
   // Race-Schutz: waehrend des fetch koennte der User Item/Tab gewechselt haben.

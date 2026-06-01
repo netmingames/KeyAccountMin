@@ -952,7 +952,12 @@ def api_translate_screenshot_captions(
 
 @app.get("/api/items/{platform}/{item_id}/assets/screenshots/{shot_id}/file")
 def api_screenshot_file(platform: str, item_id: str, shot_id: int, lang: str | None = None):
-    idir = _resolve_idir(platform, item_id)
+    # NT-563 Pass 3 (Lisbeth 17:25 LOW FUNCTIONAL): vorher _resolve_idir()
+    # ohne meta-Pruefung — legacy/malformed items konnten so Binaerdaten
+    # ausliefern, obwohl die uebrigen Asset-Routen den Item-Status bereits
+    # ablehnen. Jetzt konsistent _resolve_idir_with_meta() wie die anderen
+    # asset/screenshot-Endpoints.
+    idir = _resolve_idir_with_meta(platform, item_id)
     manifest = assets.load_manifest(idir)
     shot = next((s for s in manifest.screenshots if s.id == shot_id), None)
     if shot is None:

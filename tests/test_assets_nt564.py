@@ -157,6 +157,16 @@ def test_reorder_rejects_mismatched_ids(tmp_path: Path) -> None:
         assets.reorder_screenshots(idir, [99])
 
 
+def test_reorder_rejects_duplicates(tmp_path: Path) -> None:
+    """NT-563 Pass 3: [1,1,2] gegen {1,2} muss als Duplikat-Fehler kommen."""
+    idir = _item(tmp_path)
+    w, h = assets.SCREENSHOT_TARGET
+    assets.add_screenshot(idir, _jpg(w, h), ext="jpg")
+    assets.add_screenshot(idir, _jpg(w, h), ext="jpg")
+    with pytest.raises(ValueError, match="Duplikate"):
+        assets.reorder_screenshots(idir, [1, 1, 2])
+
+
 # --- Status + Export ---------------------------------------------------------
 
 def test_status_reports_per_lang_resolution(tmp_path: Path) -> None:

@@ -272,6 +272,9 @@ function renderInhalt(it, targetLangs) {
   // Modal zum Aktivieren). Master (DE) steht separat im Header.
   const activeSet = new Set(it.meta.active_languages);
   const inactiveLangs = state.languages.map(l => l.code).filter(c => !activeSet.has(c));
+  // NT-568 (Lisbeth 19:42): Master-Content-Feldzahl fuer uniformen 0/N-Fuellstand
+  // der inaktiven Sprachen (sie haben naturgemaess 0 uebersetzt).
+  const nContent = Object.values(it.master.fields || {}).filter(v => v && String(v).trim()).length;
   const langOverview = (targetLangs.length || inactiveLangs.length) ? `
     <div class="lang-overview">
       <span class="muted">Aktiv (${targetLangs.length}):</span>
@@ -285,7 +288,7 @@ function renderInhalt(it, targetLangs) {
         return `<button class="lang-pill${act}" data-lang-pill="${code}" title="${escapeHtml((state.langByCode[code]?.display || code) + ttl)}">${escapeHtml(state.langByCode[code]?.iso || code)} <span class="muted">${fill}</span>${pendB}${manB}</button>`;
       }).join("")}
       ${inactiveLangs.length ? `<span class="muted lang-avail-sep">· Verfuegbar/inaktiv (${inactiveLangs.length}):</span>` + inactiveLangs.map(code =>
-        `<button class="lang-pill inactive" data-lang-activate="${code}" title="${escapeHtml(state.langByCode[code]?.display || code)} — inaktiv, klick zum Aktivieren">${escapeHtml(state.langByCode[code]?.iso || code)} <span class="muted">inaktiv</span></button>`).join("") : ""}
+        `<button class="lang-pill inactive" data-lang-activate="${code}" title="${escapeHtml(state.langByCode[code]?.display || code)} — inaktiv (0/${nContent} uebersetzt), klick zum Aktivieren">${escapeHtml(state.langByCode[code]?.iso || code)} <span class="muted">0/${nContent} · inaktiv</span></button>`).join("") : ""}
     </div>` : "";
 
   return `

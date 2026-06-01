@@ -20,7 +20,7 @@ FIELD_META: dict[str, tuple[str, bool, str]] = {
     "sysreqs_rec_memory":    ("Empfohlen - Arbeitsspeicher",            False, ""),
     "sysreqs_rec_graphics":  ("Empfohlen - Grafik",                     False, ""),
     "sysreqs_rec_storage":   ("Empfohlen - Speicherplatz",              False, ""),
-    "sysreqs_rec_soundcard": ("Empfohlen - Soundkarte",                 False, ""),
+    "sysreqs_rec_soundcard": ("Empfohlen - Soundkarte",                 False, "z.B. 'DirectX-kompatibel'; meist wie das Minimum."),
     # Early-Access-Felder (Steam-Backend separater Bereich, nicht im Loka-JSON)
     "ea_why":        ("Warum Early Access?",                                  True,  ""),
     "ea_duration":   ("Wie lange wird das Spiel im Early Access bleiben?",    True,  ""),

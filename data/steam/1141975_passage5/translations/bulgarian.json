@@ -34,14 +34,14 @@
     "sysreqs_min_memory": {
       "value": "",
       "source_hash": "",
-      "stale": true,
+      "stale": false,
       "manually_edited": false,
       "last_translated_at": ""
     },
     "sysreqs_min_graphics": {
       "value": "",
       "source_hash": "",
-      "stale": true,
+      "stale": false,
       "manually_edited": false,
       "last_translated_at": ""
     },
@@ -130,5 +130,5 @@
       "last_translated_at": ""
     }
   },
-  "updated_at": "2026-05-08T16:15:47"
+  "updated_at": "2026-05-08T16:46:22"
 }

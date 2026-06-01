@@ -4,44 +4,44 @@
   "lang": "spanish",
   "fields": {
     "short_description": {
-      "value": "[SPANISH] Einfach zu lernen, kaum aus der Hand zu legen: Lege Steine, matche Farbe oder Symbol, räume Passagen vom Brett. Der Klassiker unter den Casualspielen ist zurück — runderneuert, mit vier Modi, über 300 Leveln und erstmals zu zweit am Bildschirm: gemeinsam oder im Duell.",
+      "value": "Fácil de aprender, difícil de soltar: coloca piezas, haz coincidir color o símbolo, despeja pasajes del tablero. El clásico de los juegos casuales está de vuelta — renovado, con cuatro modos, más de 300 niveles y por primera vez para dos en la misma pantalla: en cooperativo o en Duelo.",
       "source_hash": "0acb708a665c50ac74cfb31c088c71e5e9b91271b3a79ddef86a6241b9da7b9b",
-      "stale": true,
+      "stale": false,
       "manually_edited": false,
-      "last_translated_at": "2026-05-08T16:15:37"
+      "last_translated_at": "2026-05-19T10:42:32"
     },
     "about": {
-      "value": "[SPANISH] Passage 5 ist der neue Teil einer Spielreihe, die viele unserer Spieler seit über zwanzig Jahren begleitet. Das Prinzip ist seit jeher dasselbe — und genau das ist der Punkt: Lege deine Spielsteine so aneinander, dass entweder Farbe oder Symbol mit den angrenzenden Steinen übereinstimmen. Vollständige Reihen und Spalten — die Passagen — verschwinden vom Spielbrett.\r\n\r\nKlingt einfach. Ist es auch. Und genau das macht es so gut: ein Puzzle, das in dreißig Sekunden verstanden ist und einen nach drei Stunden noch nicht losgelassen hat. Wer vorausschauend plant, räumt mehrere Passagen auf einmal — wer drauflos legt, muss kreativ werden.\r\n\r\nMit dem fünften Teil haben wir das Spiel komplett neu aufgesetzt: ruhiger, übersichtlicher, ohne Schnickschnack. Bedienbar mit Maus, Tastatur oder Gamepad.\r\n\r\n\r\nVier Spielmodi\r\n\r\n- Clear — Markierte Felder freispielen. Über 300 handgebaute Level.\r\n- Continue — Endlos legen, solange das Brett es zulässt.\r\n- Classic — Klassisches Highscore-Jagen.\r\n- Construct (neu) — Das Gegenstück zu Clear: Statt Felder freizuräumen, musst du bestimmte Felder gezielt mit Steinen füllen. Fühlt sich nochmal anders an als die drei Klassiker.\r\n\r\n\r\nErstmals zu zweit\r\n\r\n- Coop — Zwei Spieler an einem Bildschirm, zwei eigene Cursor, gemeinsamer Score. Zusammen aufs Brett schauen, zusammen planen, zusammen gewinnen.\r\n- Duell — Geteiltes Brett, jeder bekommt seine Hälfte. Wer räumt zuerst? Wahlweise über mehrere Level, im Best-of oder als Last Man Playing.\r\n- Geräte werden im FIFA-Stil zugewiesen: Wer auf seinem Eingabegerät bestätigt, ist drin. Tastatur, Maus, mehrere Gamepads — alles parallel möglich.\r\n\r\n\r\nMehr Tiefe für die alten Hasen\r\n\r\n- Vier Schwierigkeitsstufen — neu dabei: Meister, für alle, denen Schwer zu leicht geworden ist\r\n- Optionaler Zug-Timer auf den höheren Stufen — wer keinen Druck will, lässt ihn aus\r\n- Streak-System: Wie viele Steine schaffst du in Folge ohne Fehler?\r\n- Spezial-Steine: Bombe, Reihen- und Spalten-Bombe, Joker und Blocker\r\n- Symbol-Zahlen auf jedem Stein als optische Hilfe — keine Lupe nötig\r\n\r\n\r\nHighscores, Saves und Aktionen\r\n\r\n- Steam-Achievements und Steam-Leaderboards — neu in der Reihe\r\n- Internet-Bestenlisten zusätzlich zu den lokalen Highscores\r\n- Aktionen — zeitlich begrenzte Challenges mit eigener Bestenliste\r\n- Mehrere Speicherplätze mit eigenen Spielernamen, jederzeit wechselbar\r\n- Eigene Highscore-Tabs pro Modus und Schwierigkeit\r\n\r\n\r\nFeatures auf einen Blick\r\n\r\n- Vier Spielmodi: Clear, Continue, Classic, Construct\r\n- Coop und Duell für zwei Spieler\r\n- Vier Schwierigkeitsstufen inkl. Meister\r\n- Über 300 Level im Clear-Modus\r\n- Steam-Achievements und Leaderboards\r\n- Mehrere Save-Slots mit eigenen Spielernamen\r\n- Spezial-Steine, Streak-System, optionaler Zug-Timer\r\n- Komplette Bedienung per Maus, Tastatur oder Gamepad\r\n- Gesprochenes Tutorial — kein langes Lesen nötig\r\n- Atmosphärische Sound-Effekte und Hintergrundmusik\r\n- Eigene Stein-Designs ladbar",
+      "value": "Passage 5 es la nueva entrega de una serie que acompaña a muchos de nuestros jugadores desde hace más de veinte años. El principio es el mismo de siempre — y eso es justo lo que cuenta: coloca tus piezas de forma que coincidan en color o símbolo con las piezas contiguas. Las filas y columnas completas — los pasajes — desaparecen del tablero.\r\n\r\nSuena sencillo. Y lo es. Y eso es precisamente lo que lo hace tan bueno: un puzzle que se entiende en treinta segundos y que no te suelta después de tres horas. Quien planifica con visión despeja varios pasajes a la vez — quien juega al azar tiene que ser creativo.\r\n\r\nCon la quinta entrega hemos rehecho el juego por completo: más tranquilo, más claro, sin florituras. Manejable con ratón, teclado o mando.\r\n\r\n\r\nCuatro modos de juego\r\n\r\n- Clear — Despeja las casillas marcadas. Más de 300 niveles diseñados a mano.\r\n- Continue — Coloca sin fin, mientras el tablero lo permita.\r\n- Classic — La caza clásica de la mejor puntuación.\r\n- Construct (nuevo) — El reverso de Clear: en vez de despejar casillas, tienes que rellenar casillas concretas con piezas. Se siente distinto a los tres clásicos.\r\n\r\n\r\nPor primera vez, para dos\r\n\r\n- Coop — Dos jugadores en una pantalla, dos cursores propios, puntuación compartida. Mirar el tablero juntos, planear juntos, ganar juntos.\r\n- Duelo — Tablero dividido, cada uno con su mitad. ¿Quién despeja primero? A elegir entre varios niveles, al mejor de varias partidas o como Last Man Playing.\r\n- Los dispositivos se asignan al estilo FIFA: quien confirma en su dispositivo, está dentro. Teclado, ratón, varios mandos — todo en paralelo.\r\n\r\n\r\nMás profundidad para los veteranos\r\n\r\n- Cuatro niveles de dificultad — nuevo: Maestro, para quien Difícil se le ha quedado corto\r\n- Temporizador de jugada opcional en los niveles altos — si no quieres presión, lo desactivas\r\n- Sistema de Streak: ¿Cuántas piezas consigues seguidas sin fallar?\r\n- Piezas especiales: bomba, bomba de fila y de columna, comodín y bloqueador\r\n- Números de símbolo en cada pieza como ayuda visual — sin necesidad de lupa\r\n\r\n\r\nPuntuaciones, partidas guardadas y eventos\r\n\r\n- Logros de Steam y tablas de clasificación de Steam — nuevo en la serie\r\n- Clasificaciones online además de los récords locales\r\n- Eventos — desafíos por tiempo limitado con su propia tabla de clasificación\r\n- Varias ranuras de guardado con nombres propios, intercambiables en todo momento\r\n- Pestañas de récord propias por modo y dificultad\r\n\r\n\r\nCaracterísticas de un vistazo\r\n\r\n- Cuatro modos de juego: Clear, Continue, Classic, Construct\r\n- Coop y Duelo para dos jugadores\r\n- Cuatro niveles de dificultad incl. Maestro\r\n- Más de 300 niveles en el modo Clear\r\n- Logros y tablas de clasificación de Steam\r\n- Varias ranuras de guardado con nombres propios\r\n- Piezas especiales, sistema de Streak, temporizador de jugada opcional\r\n- Control completo con ratón, teclado o mando\r\n- Tutorial hablado — sin largas lecturas\r\n- Efectos de sonido envolventes y música de fondo\r\n- Diseños de piezas propios cargables",
       "source_hash": "8928c0f2c44333f84fc549301940d98fd8924e944cf7b14690b0a5d1ad762b32",
-      "stale": true,
+      "stale": false,
       "manually_edited": false,
-      "last_translated_at": "2026-05-08T16:15:37"
+      "last_translated_at": "2026-05-19T10:42:32"
     },
     "sysreqs_min_osversion": {
-      "value": "",
-      "source_hash": "",
-      "stale": true,
+      "value": "Pentium 1 GHz",
+      "source_hash": "dd35475def3fb85c9179c1343d0c18e5d63602d68dff2352e8f751755d33e200",
+      "stale": false,
       "manually_edited": false,
-      "last_translated_at": ""
+      "last_translated_at": "2026-05-19T10:42:32"
     },
     "sysreqs_min_processor": {
-      "value": "",
-      "source_hash": "",
-      "stale": true,
+      "value": "Pentium 1 GHz",
+      "source_hash": "dd35475def3fb85c9179c1343d0c18e5d63602d68dff2352e8f751755d33e200",
+      "stale": false,
       "manually_edited": false,
-      "last_translated_at": ""
+      "last_translated_at": "2026-05-19T10:42:32"
     },
     "sysreqs_min_memory": {
       "value": "",
       "source_hash": "",
-      "stale": true,
+      "stale": false,
       "manually_edited": false,
       "last_translated_at": ""
     },
     "sysreqs_min_graphics": {
       "value": "",
       "source_hash": "",
-      "stale": true,
+      "stale": false,
       "manually_edited": false,
       "last_translated_at": ""
     },
@@ -88,47 +88,47 @@
       "last_translated_at": ""
     },
     "ea_why": {
-      "value": "[SPANISH] Wir wollen frueh Feedback der Community zu Multiplayer und Schwierigkeit Master.",
-      "source_hash": "922652be7a2a3789d216d94d9553d6dce85965f7acb615fd71d1308724ff3227",
-      "stale": true,
+      "value": "Queremos mejorar el juego a partir del primer feedback de los usuarios. Sobre todo los dos modos multijugador, Duelo y cooperativo, deberían ser jugados por los usuarios para que podamos hacer los ajustes correspondientes.",
+      "source_hash": "13dfd8073fa8a3232cabfab18a28977b61353d443e2c434c6cc02c4b95583ff1",
+      "stale": false,
       "manually_edited": false,
-      "last_translated_at": "2026-05-08T16:15:37"
+      "last_translated_at": "2026-05-19T10:42:32"
     },
     "ea_duration": {
-      "value": "[SPANISH] Etwa 6-9 Monate, bis alle 4 Schwierigkeiten und Multiplayer ausbalanciert sind.",
-      "source_hash": "d25c2ef2e10cfb889b99e52581af17bde7d8719e3d2420a1b650eef2f37d47e8",
-      "stale": true,
+      "value": "2-3 meses",
+      "source_hash": "15f609a56ba63cf83ac35ea73db2c579794f173cb6bb24b506072029f4b680e5",
+      "stale": false,
       "manually_edited": false,
-      "last_translated_at": "2026-05-08T16:15:37"
+      "last_translated_at": "2026-05-19T10:42:32"
     },
     "ea_difference": {
-      "value": "",
-      "source_hash": "",
+      "value": "Además de la mejora continua de la jugabilidad, en la versión final tendremos más campañas, es decir, más fondos y sets de piezas.\n\nHabrá una nueva campaña con el nombre \"Colección de Arte\" en la versión final.\n\nLa estructura y el orden de los niveles probablemente cambiarán.\n\nQueremos usar el feedback de los usuarios de Early Access para optimizar la jugabilidad.\n\nVemos sobre todo una gran necesidad de Early Access en el área multijugador, ya que esta característica no la podemos probar de forma completa por nosotros mismos.",
+      "source_hash": "e27250701d302ce0ccb71230b26945c5d533c3323cd0dfbff52e2f9811b2874f",
       "stale": true,
       "manually_edited": false,
-      "last_translated_at": ""
+      "last_translated_at": "2026-05-19T10:42:32"
     },
     "ea_state": {
-      "value": "",
-      "source_hash": "",
-      "stale": true,
+      "value": "Actualmente estamos trabajando en el ajuste de los niveles y las campañas.\n\nParticiparemos con una demo en el Steam Next Festival.",
+      "source_hash": "f7e447c410426360da14d01dc6f5763d9b61e35e237a232d2bc8d8b16cc59c21",
+      "stale": false,
       "manually_edited": false,
-      "last_translated_at": ""
+      "last_translated_at": "2026-05-19T10:42:32"
     },
     "ea_pricing": {
-      "value": "",
-      "source_hash": "",
-      "stale": true,
+      "value": "Hay un descuento durante la fase de Early Access; el precio en el lanzamiento será más alto.",
+      "source_hash": "fb8be1db83fdd2d53bdae4934bfc7f5e045bedc6186a8c57812c918482b0c172",
+      "stale": false,
       "manually_edited": false,
-      "last_translated_at": ""
+      "last_translated_at": "2026-05-19T10:42:32"
     },
     "ea_community": {
-      "value": "",
-      "source_hash": "",
-      "stale": true,
+      "value": "El feedback se incorpora directamente al desarrollo.\n\nSobre todo el aspecto multijugador es una nueva característica y esperamos mucha aportación por vuestra parte para optimizarla.\n\nEsperamos una comunicación activa en la comunidad de Steam, por correo electrónico y en nuestro canal de Discord:\nhttps://discord.gg/eDURb5Yn",
+      "source_hash": "897ea1b655d9158526d18ae0229f82a5ec10da0a852f55d3f0bb5a2a41fdea1e",
+      "stale": false,
       "manually_edited": false,
-      "last_translated_at": ""
+      "last_translated_at": "2026-05-19T10:42:32"
     }
   },
-  "updated_at": "2026-05-08T16:15:47"
+  "updated_at": "2026-05-19T17:35:57"
 }

@@ -4,44 +4,44 @@
   "lang": "japanese",
   "fields": {
     "short_description": {
-      "value": "[JAPANESE] Einfach zu lernen, kaum aus der Hand zu legen: Lege Steine, matche Farbe oder Symbol, räume Passagen vom Brett. Der Klassiker unter den Casualspielen ist zurück — runderneuert, mit vier Modi, über 300 Leveln und erstmals zu zweit am Bildschirm: gemeinsam oder im Duell.",
+      "value": "覚えるのは簡単、やめられないのは確実。タイルを置き、色かシンボルを合わせて、ボードからパッセージを消そう。カジュアルゲームの古典が帰ってきた──全面刷新、4つのモード、300以上のレベル、そして初の2人プレイ：協力でも、Duellでも。",
       "source_hash": "0acb708a665c50ac74cfb31c088c71e5e9b91271b3a79ddef86a6241b9da7b9b",
-      "stale": true,
+      "stale": false,
       "manually_edited": false,
-      "last_translated_at": "2026-05-08T16:15:37"
+      "last_translated_at": "2026-05-19T10:45:07"
     },
     "about": {
-      "value": "[JAPANESE] Passage 5 ist der neue Teil einer Spielreihe, die viele unserer Spieler seit über zwanzig Jahren begleitet. Das Prinzip ist seit jeher dasselbe — und genau das ist der Punkt: Lege deine Spielsteine so aneinander, dass entweder Farbe oder Symbol mit den angrenzenden Steinen übereinstimmen. Vollständige Reihen und Spalten — die Passagen — verschwinden vom Spielbrett.\r\n\r\nKlingt einfach. Ist es auch. Und genau das macht es so gut: ein Puzzle, das in dreißig Sekunden verstanden ist und einen nach drei Stunden noch nicht losgelassen hat. Wer vorausschauend plant, räumt mehrere Passagen auf einmal — wer drauflos legt, muss kreativ werden.\r\n\r\nMit dem fünften Teil haben wir das Spiel komplett neu aufgesetzt: ruhiger, übersichtlicher, ohne Schnickschnack. Bedienbar mit Maus, Tastatur oder Gamepad.\r\n\r\n\r\nVier Spielmodi\r\n\r\n- Clear — Markierte Felder freispielen. Über 300 handgebaute Level.\r\n- Continue — Endlos legen, solange das Brett es zulässt.\r\n- Classic — Klassisches Highscore-Jagen.\r\n- Construct (neu) — Das Gegenstück zu Clear: Statt Felder freizuräumen, musst du bestimmte Felder gezielt mit Steinen füllen. Fühlt sich nochmal anders an als die drei Klassiker.\r\n\r\n\r\nErstmals zu zweit\r\n\r\n- Coop — Zwei Spieler an einem Bildschirm, zwei eigene Cursor, gemeinsamer Score. Zusammen aufs Brett schauen, zusammen planen, zusammen gewinnen.\r\n- Duell — Geteiltes Brett, jeder bekommt seine Hälfte. Wer räumt zuerst? Wahlweise über mehrere Level, im Best-of oder als Last Man Playing.\r\n- Geräte werden im FIFA-Stil zugewiesen: Wer auf seinem Eingabegerät bestätigt, ist drin. Tastatur, Maus, mehrere Gamepads — alles parallel möglich.\r\n\r\n\r\nMehr Tiefe für die alten Hasen\r\n\r\n- Vier Schwierigkeitsstufen — neu dabei: Meister, für alle, denen Schwer zu leicht geworden ist\r\n- Optionaler Zug-Timer auf den höheren Stufen — wer keinen Druck will, lässt ihn aus\r\n- Streak-System: Wie viele Steine schaffst du in Folge ohne Fehler?\r\n- Spezial-Steine: Bombe, Reihen- und Spalten-Bombe, Joker und Blocker\r\n- Symbol-Zahlen auf jedem Stein als optische Hilfe — keine Lupe nötig\r\n\r\n\r\nHighscores, Saves und Aktionen\r\n\r\n- Steam-Achievements und Steam-Leaderboards — neu in der Reihe\r\n- Internet-Bestenlisten zusätzlich zu den lokalen Highscores\r\n- Aktionen — zeitlich begrenzte Challenges mit eigener Bestenliste\r\n- Mehrere Speicherplätze mit eigenen Spielernamen, jederzeit wechselbar\r\n- Eigene Highscore-Tabs pro Modus und Schwierigkeit\r\n\r\n\r\nFeatures auf einen Blick\r\n\r\n- Vier Spielmodi: Clear, Continue, Classic, Construct\r\n- Coop und Duell für zwei Spieler\r\n- Vier Schwierigkeitsstufen inkl. Meister\r\n- Über 300 Level im Clear-Modus\r\n- Steam-Achievements und Leaderboards\r\n- Mehrere Save-Slots mit eigenen Spielernamen\r\n- Spezial-Steine, Streak-System, optionaler Zug-Timer\r\n- Komplette Bedienung per Maus, Tastatur oder Gamepad\r\n- Gesprochenes Tutorial — kein langes Lesen nötig\r\n- Atmosphärische Sound-Effekte und Hintergrundmusik\r\n- Eigene Stein-Designs ladbar",
+      "value": "Passage 5は、20年以上にわたって多くのプレイヤーに愛されてきたシリーズの最新作です。原則は昔から変わりません──そしてそれこそが核心です：手持ちのタイルを、隣接するタイルと色またはシンボルが一致するように並べていきます。完成した行と列──パッセージ──はボードから消えていきます。\r\n\r\n単純に聞こえます。実際に単純です。だからこそ素晴らしい：30秒で理解できるのに、3時間経っても手が止まらないパズル。先を読んで計画すれば一度に複数のパッセージを消せる──行き当たりばったりに置けば、創意工夫が求められます。\r\n\r\n第5作では、ゲームを一から作り直しました：より静かに、より見やすく、余計な飾りなしで。マウス、キーボード、ゲームパッドのいずれでも操作可能。\r\n\r\n\r\n4つのプレイモード\r\n\r\n- Clear — マークされたマスをクリアしよう。300以上の手作りレベル。\r\n- Continue — ボードが許す限り、エンドレスに配置。\r\n- Classic — 古典的なハイスコア狙い。\r\n- Construct（新）— Clearの対極：マスをクリアするのではなく、指定されたマスに狙ってタイルを埋めていく。3つの定番モードとはまた違う手触り。\r\n\r\n\r\n初の2人プレイ\r\n\r\n- Coop — 1画面に2人のプレイヤー、それぞれのカーソル、共通のスコア。一緒にボードを見て、一緒に計画し、一緒に勝つ。\r\n- Duell — ボードを分割、それぞれが自分の半分を担当。先にクリアするのは誰？複数レベル、Best-of、またはLast Man Playing形式から選択可能。\r\n- デバイスはFIFA方式で割り当て：自分の入力機器で確定した人が参加。キーボード、マウス、複数のゲームパッド──すべて並行使用可能。\r\n\r\n\r\nベテラン向けの深み\r\n\r\n- 4つの難易度──新たに「マスター」を追加。「ハード」では物足りなくなった人へ\r\n- 高難易度では任意の手番タイマー──プレッシャーを避けたい人はオフに\r\n- Streakシステム：ミスなしで何タイル連続で置けるか？\r\n- 特殊タイル：爆弾、行・列爆弾、ジョーカー、ブロッカー\r\n- 各タイルにシンボル数字を表示する視覚補助──虫眼鏡不要\r\n\r\n\r\nハイスコア、セーブ、イベント\r\n\r\n- Steam実績とSteamリーダーボード──シリーズ初\r\n- ローカルハイスコアに加えてオンラインランキング\r\n- イベント──期間限定チャレンジと専用ランキング\r\n- 独自のプレイヤー名付き複数セーブスロット、いつでも切り替え可能\r\n- モードと難易度ごとの個別ハイスコアタブ\r\n\r\n\r\n機能一覧\r\n\r\n- 4つのプレイモード：Clear、Continue、Classic、Construct\r\n- 2人プレイ用のCoopとDuell\r\n- マスター含む4つの難易度\r\n- Clearモードに300以上のレベル\r\n- Steam実績とリーダーボード\r\n- 独自のプレイヤー名付き複数セーブスロット\r\n- 特殊タイル、Streakシステム、任意の手番タイマー\r\n- マウス、キーボード、ゲームパッドによる完全操作\r\n- 音声チュートリアル──長文を読む必要なし\r\n- 雰囲気のあるサウンドエフェクトとBGM\r\n- 独自のタイルデザインを読み込み可能",
       "source_hash": "8928c0f2c44333f84fc549301940d98fd8924e944cf7b14690b0a5d1ad762b32",
-      "stale": true,
+      "stale": false,
       "manually_edited": false,
-      "last_translated_at": "2026-05-08T16:15:37"
+      "last_translated_at": "2026-05-19T10:45:07"
     },
     "sysreqs_min_osversion": {
-      "value": "",
-      "source_hash": "",
-      "stale": true,
+      "value": "Pentium 1 GHz",
+      "source_hash": "dd35475def3fb85c9179c1343d0c18e5d63602d68dff2352e8f751755d33e200",
+      "stale": false,
       "manually_edited": false,
-      "last_translated_at": ""
+      "last_translated_at": "2026-05-19T10:45:07"
     },
     "sysreqs_min_processor": {
-      "value": "",
-      "source_hash": "",
-      "stale": true,
+      "value": "Pentium 1 GHz",
+      "source_hash": "dd35475def3fb85c9179c1343d0c18e5d63602d68dff2352e8f751755d33e200",
+      "stale": false,
       "manually_edited": false,
-      "last_translated_at": ""
+      "last_translated_at": "2026-05-19T10:45:07"
     },
     "sysreqs_min_memory": {
       "value": "",
       "source_hash": "",
-      "stale": true,
+      "stale": false,
       "manually_edited": false,
       "last_translated_at": ""
     },
     "sysreqs_min_graphics": {
       "value": "",
       "source_hash": "",
-      "stale": true,
+      "stale": false,
       "manually_edited": false,
       "last_translated_at": ""
     },
@@ -88,47 +88,47 @@
       "last_translated_at": ""
     },
     "ea_why": {
-      "value": "[JAPANESE] Wir wollen frueh Feedback der Community zu Multiplayer und Schwierigkeit Master.",
-      "source_hash": "922652be7a2a3789d216d94d9553d6dce85965f7acb615fd71d1308724ff3227",
-      "stale": true,
+      "value": "最初のユーザーフィードバックを受けてゲームを改善したいと考えています。特にDuelと協力プレイの2つのマルチプレイヤーモードは、プレイヤーに遊んでもらうことで、それに応じた調整ができるようになります。",
+      "source_hash": "13dfd8073fa8a3232cabfab18a28977b61353d443e2c434c6cc02c4b95583ff1",
+      "stale": false,
       "manually_edited": false,
-      "last_translated_at": "2026-05-08T16:15:37"
+      "last_translated_at": "2026-05-19T10:45:07"
     },
     "ea_duration": {
-      "value": "[JAPANESE] Etwa 6-9 Monate, bis alle 4 Schwierigkeiten und Multiplayer ausbalanciert sind.",
-      "source_hash": "d25c2ef2e10cfb889b99e52581af17bde7d8719e3d2420a1b650eef2f37d47e8",
-      "stale": true,
+      "value": "2〜3ヶ月",
+      "source_hash": "15f609a56ba63cf83ac35ea73db2c579794f173cb6bb24b506072029f4b680e5",
+      "stale": false,
       "manually_edited": false,
-      "last_translated_at": "2026-05-08T16:15:37"
+      "last_translated_at": "2026-05-19T10:45:07"
     },
     "ea_difference": {
-      "value": "",
-      "source_hash": "",
+      "value": "ゲームプレイの継続的な改善に加えて、リリース版ではより多くのキャンペーン、つまり背景とタイルセットを用意する予定です。\n\nリリース版には「Kunstsammlung（美術コレクション）」という新キャンペーンが追加されます。\n\nレベルの構成と順序はおそらく変更されます。\n\nEAユーザーのフィードバックを活用してゲームプレイを最適化していきます。\n\n特にマルチプレイヤー領域では大きなEAの必要性があると考えています。この機能は私たちだけでは十分にテストできないためです。",
+      "source_hash": "e27250701d302ce0ccb71230b26945c5d533c3323cd0dfbff52e2f9811b2874f",
       "stale": true,
       "manually_edited": false,
-      "last_translated_at": ""
+      "last_translated_at": "2026-05-19T10:45:07"
     },
     "ea_state": {
-      "value": "",
-      "source_hash": "",
-      "stale": true,
+      "value": "現在、レベルとキャンペーンの調整に取り組んでいます。\n\nSteam Nextフェスティバルにデモで参加する予定です。",
+      "source_hash": "f7e447c410426360da14d01dc6f5763d9b61e35e237a232d2bc8d8b16cc59c21",
+      "stale": false,
       "manually_edited": false,
-      "last_translated_at": ""
+      "last_translated_at": "2026-05-19T10:45:07"
     },
     "ea_pricing": {
-      "value": "",
-      "source_hash": "",
-      "stale": true,
+      "value": "アーリーアクセス期間中は割引価格となり、リリース時には価格が上がります。",
+      "source_hash": "fb8be1db83fdd2d53bdae4934bfc7f5e045bedc6186a8c57812c918482b0c172",
+      "stale": false,
       "manually_edited": false,
-      "last_translated_at": ""
+      "last_translated_at": "2026-05-19T10:45:07"
     },
     "ea_community": {
-      "value": "",
-      "source_hash": "",
-      "stale": true,
+      "value": "フィードバックは直接開発に反映されます。\n\n特にマルチプレイヤーは新機能であり、この機能を最適化するために皆さんからの多くのインプットを期待しています。\n\nSteamコミュニティでのメールや、私たちのDiscordチャンネルでの活発なコミュニケーションを楽しみにしています：\nhttps://discord.gg/eDURb5Yn",
+      "source_hash": "897ea1b655d9158526d18ae0229f82a5ec10da0a852f55d3f0bb5a2a41fdea1e",
+      "stale": false,
       "manually_edited": false,
-      "last_translated_at": ""
+      "last_translated_at": "2026-05-19T10:45:07"
     }
   },
-  "updated_at": "2026-05-08T16:15:47"
+  "updated_at": "2026-05-19T17:35:57"
 }

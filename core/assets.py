@@ -611,7 +611,21 @@ def get_screenshot_details(idir: Path, shot_id: int) -> dict:
         "master_caption": shot.master_caption,
         "captions": dict(shot.captions),
         "has_default": shot.default is not None,
+        "default_size_ok": shot.default.size_ok if shot.default else None,
         "has_override": {lang: True for lang in shot.localized.keys()},
+        # NT-564 Pass 5 (Lisbeth 17:56 LOW FUNCTIONAL): pro Override die Maß-/
+        # Format-Validierung mitliefern, damit das Per-Sprache-Modal einen
+        # falsch dimensionierten Screenshot-Override sichtbar machen kann
+        # (vorher nur has_override=True, ein zu kleines Bild war nicht erkennbar).
+        "overrides": {
+            lang: {
+                "size_ok": af.size_ok,
+                "warnings": list(af.warnings),
+                "width": af.width,
+                "height": af.height,
+            }
+            for lang, af in shot.localized.items()
+        },
     }
 
 
@@ -741,25 +755,31 @@ def export_zip(idir: Path, lang: str) -> bytes:
                 continue
             arcname = f"{slot.key}{p.suffix}"
             zf.write(p, arcname)
-            # Kam das Bild aus einem Override oder dem Default?
-            st = manifest.slots.get(slot.key) or SlotState()
-            src = "override" if lang in st.localized else "default"
+            # NT-564 Pass 5 (Lisbeth 17:56 LOW FUNCTIONAL): override vs default
+            # an der TATSAECHLICH aufgeloesten Datei festmachen, nicht an der
+            # Manifest-Mitgliedschaft. resolve_asset() faellt bei verwaistem
+            # Override (Eintrag da, Datei weg) auf default zurueck — dann darf
+            # das README nicht faelschlich "override" melden.
+            ov = (manifest.slots.get(slot.key) or SlotState()).localized.get(lang)
+            src = "override" if (ov is not None and p.name == ov.filename) else "default"
             lines.append(f"[ok/{src}] {slot.label}: {arcname}")
 
+        sdir = _assets_dir(idir) / "screenshots"
         shots = sorted(manifest.screenshots, key=lambda s: s.order)
         for i, shot in enumerate(shots, start=1):
-            entry = shot.localized.get(lang) or shot.default
-            if entry is None:
+            # Gleiche Fallback-Logik wie resolve_asset: Override nur wenn dessen
+            # Datei wirklich existiert, sonst default. src-Label folgt der
+            # tatsaechlich gewaehlten Datei.
+            ov = shot.localized.get(lang)
+            if ov is not None and (sdir / ov.filename).exists():
+                entry, src = ov, "override"
+            elif shot.default is not None and (sdir / shot.default.filename).exists():
+                entry, src = shot.default, "default"
+            else:
                 lines.append(f"[FEHLT] Screenshot {shot.id}")
                 continue
-            src_path = _assets_dir(idir) / "screenshots" / entry.filename
-            if not src_path.exists():
-                lines.append(f"[FEHLT] Screenshot {shot.id} (Datei weg)")
-                continue
-            ext = src_path.suffix
-            arcname = f"screenshots/{i:02d}{ext}"
-            zf.write(src_path, arcname)
-            src = "override" if lang in shot.localized else "default"
+            arcname = f"screenshots/{i:02d}{(sdir / entry.filename).suffix}"
+            zf.write(sdir / entry.filename, arcname)
             caption = shot.captions.get(lang) or shot.master_caption
             lines.append(f"[ok/{src}] Screenshot {i:02d}: {arcname}"
                          + (f"  | Caption: {caption}" if caption else ""))

@@ -884,19 +884,25 @@ async function openScreenshotLangsModal(it, shotId) {
   // nicht ablesen. Wir holen die Details ueber einen neuen, leichten Read:
   let captions = {};
   let hasOverride = {};
+  let overrides = {};
   try {
     const r = await fetch(`/api/items/${platform}/${itemId}/assets/screenshots/${shotId}/details`);
     if (r.ok) {
       const j = await r.json();
       captions = j.captions || {};
       hasOverride = j.has_override || {};
+      overrides = j.overrides || {};
     }
   } catch (_) { /* details-Endpoint kann fehlen -> Modal funktioniert trotzdem */ }
 
   const rows = targetLangs.map(l => {
     const lab = state.langByCode[l]?.display || l;
     const cap = captions[l] || "";
-    const ov = hasOverride[l] ? `<span class="muted">Override</span>` : `<span class="muted">faellt auf Standard zurueck</span>`;
+    // NT-564 Pass 5: falsch dimensionierten Override sichtbar machen.
+    const ovInfo = overrides[l];
+    const ovWarn = (ovInfo && ovInfo.size_ok === false)
+      ? ` <span class="chip-warn" title="${escapeHtml((ovInfo.warnings || []).join(" / ") || "Maß/Format weicht vom Soll ab")}">⚠ ${ovInfo.width}×${ovInfo.height}</span>` : "";
+    const ov = hasOverride[l] ? `<span class="muted">Override${ovWarn}</span>` : `<span class="muted">faellt auf Standard zurueck</span>`;
     return `<tr data-lang="${l}">
       <td><span class="lang-tag">${escapeHtml(l)}</span> ${escapeHtml(lab)}</td>
       <td><input type="text" class="lang-cap" data-lang="${l}" value="${escapeHtml(cap)}" placeholder="(leer)"></td>

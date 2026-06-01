@@ -19,6 +19,7 @@ const state = {
   // langsamere Vorgaenger-Antwort (z.B. die Pre-Save-Anfrage) eine spaetere
   // schon gespeicherte Anzeige ueberschreiben.
   langRenderTokens: {},
+  assetsCatalog: null,    // /api/assets/catalog (einmal geladen)
 };
 
 // Plattformen — heute nur Steam aktiv. Top-Level-Tabs sind hardcoded;
@@ -32,7 +33,7 @@ const PLATFORMS = [
 
 const SUB_TABS = [
   { code: "inhalt",   label: "Inhalt",   active: true  },
-  { code: "grafiken", label: "Grafiken", active: false, hint: "Phase 2" },
+  { code: "grafiken", label: "Grafiken", active: true },
 ];
 
 // --- Boot --------------------------------------------------------------------
@@ -201,6 +202,9 @@ async function renderContent() {
     if (state.currentTargetLang) {
       await loadAndRenderTargetLang(it, state.currentTargetLang);
     }
+  } else if (state.currentSubTab === "grafiken") {
+    main.innerHTML = `<div class="loading muted">Lade Grafiken ...</div>`;
+    await renderGrafiken(it);
   }
 }
 
@@ -503,6 +507,235 @@ async function loadAndRenderTargetLang(it, lang) {
     if (tf.manually_edited) flagHtml += `<span class="flag manual">manuell editiert</span>`;
     flags.innerHTML = flagHtml;
   }
+}
+
+// --- Grafiken-Tab (NT-564) ---------------------------------------------------
+
+async function ensureAssetsCatalog() {
+  if (!state.assetsCatalog) {
+    state.assetsCatalog = (await fetch("/api/assets/catalog").then(r => r.json())).slots;
+  }
+  return state.assetsCatalog;
+}
+
+async function renderGrafiken(it) {
+  const main = document.getElementById("content");
+  const platform = it.meta.platform;
+  const itemId = it.meta.item_id;
+  const itemKey = `${platform}:${itemId}`;
+  let catalog, status;
+  try {
+    [catalog, status] = await Promise.all([
+      ensureAssetsCatalog(),
+      fetch(`/api/items/${platform}/${itemId}/assets`).then(r => r.json()),
+    ]);
+  } catch (err) {
+    main.innerHTML = `<div class="card error">Grafiken konnten nicht geladen werden: ${escapeHtml(String(err))}</div>`;
+    return;
+  }
+  // Race-Schutz: waehrend des fetch koennte der User Item/Tab gewechselt haben.
+  if (state.currentItemKey !== itemKey || state.currentSubTab !== "grafiken") return;
+
+  const statusByKey = Object.fromEntries((status.slots || []).map(s => [s.key, s]));
+  const cv = Date.now();  // cache-buster fuer Bild-Previews nach Upload
+  const fileInput = (attrs) => `<input type="file" accept="image/*" hidden ${attrs}>`;
+
+  const slotCard = (slot) => {
+    const st = statusByKey[slot.key] || {};
+    const base = `/api/items/${platform}/${itemId}/assets/${slot.key}`;
+    const preview = st.has_default
+      ? `<img class="asset-preview" src="${base}/file?lang=default&v=${cv}" alt="">`
+      : `<div class="asset-empty">kein Bild</div>`;
+    const warn = (st.has_default && st.default_size_ok === false)
+      ? `<span class="flag stale" title="Bildmaß weicht vom Soll ab">Maß ≠ Soll</span>` : "";
+    let langRow = "";
+    if (slot.localizable && st.per_lang) {
+      const chips = Object.entries(st.per_lang).map(([lang, mode]) => {
+        const disp = state.langByCode[lang]?.iso || lang;
+        const clear = mode === "override"
+          ? `<button class="chip-clear" data-clear-slot="${slot.key}" data-clear-lang="${lang}" title="Override entfernen">×</button>` : "";
+        return `<span class="lang-chip ${mode}">
+          <label class="chip-up" title="Override fuer ${escapeHtml(disp)} hochladen">${escapeHtml(disp)}
+            ${fileInput(`data-slot="${slot.key}" data-lang="${lang}"`)}
+          </label>${clear}</span>`;
+      }).join("");
+      langRow = `<div class="asset-langs"><span class="muted">Per-Sprache:</span> ${chips}</div>`;
+    }
+    const missingCls = (slot.required && !st.has_default) ? " missing" : "";
+    return `<div class="asset-card${missingCls}">
+      <div class="asset-head">
+        <strong>${escapeHtml(slot.label)}</strong>
+        <span class="muted">${slot.width}×${slot.height} · ${(slot.formats || []).join("/")}</span>
+        ${slot.required ? `<span class="flag req">Pflicht</span>` : ""}${warn}
+      </div>
+      ${preview}
+      <div class="asset-actions">
+        <label class="btn small">⬆ Standard${fileInput(`data-slot="${slot.key}" data-default="1"`)}</label>
+        ${st.has_default ? `<button class="btn small del" data-del-slot="${slot.key}">🗑</button>` : ""}
+      </div>
+      ${langRow}
+    </div>`;
+  };
+
+  const categories = [
+    { key: "store",   label: "Store-Seite" },
+    { key: "library", label: "Bibliothek" },
+    { key: "icon",    label: "Icons" },
+  ];
+  const catSections = categories.map(c => {
+    const slots = catalog.filter(s => s.category === c.key);
+    if (!slots.length) return "";
+    return `<section class="card">
+      <h2>${escapeHtml(c.label)}</h2>
+      <div class="asset-grid">${slots.map(slotCard).join("")}</div>
+    </section>`;
+  }).join("");
+
+  const shots = (status.screenshots && status.screenshots.items) || [];
+  const shotCards = shots.map((s, i) => {
+    const base = `/api/items/${platform}/${itemId}/assets/screenshots/${s.id}`;
+    const warn = s.size_ok === false ? `<span class="flag stale">Maß ≠ 1920×1080</span>` : "";
+    const thumb = s.has_default
+      ? `<img class="shot-thumb" src="${base}/file?lang=default&v=${cv}" alt="">`
+      : `<div class="asset-empty">—</div>`;
+    return `<div class="shot-card" data-shot="${s.id}">
+      <div class="shot-num">#${i + 1}${warn}</div>
+      ${thumb}
+      <input type="text" class="shot-caption" data-shot="${s.id}" value="${escapeHtml(s.master_caption || "")}" placeholder="Caption (DE)">
+      <div class="shot-actions">
+        <button class="btn small" data-shot-up="${s.id}" ${i === 0 ? "disabled" : ""}>↑</button>
+        <button class="btn small" data-shot-down="${s.id}" ${i === shots.length - 1 ? "disabled" : ""}>↓</button>
+        <button class="btn small del" data-shot-del="${s.id}">🗑</button>
+      </div>
+    </div>`;
+  }).join("");
+
+  const exportOpts = it.meta.active_languages
+    .map(l => `<option value="${l}">${escapeHtml(state.langByCode[l]?.display || l)}</option>`).join("");
+
+  main.innerHTML = `
+    <section class="card item-header">
+      <h2>${escapeHtml(it.meta.name)} — Grafiken <span class="muted">#${it.meta.item_id} · ${escapeHtml(it.meta.platform)}</span></h2>
+      <div class="header-controls">
+        <span class="muted">Standard-Bild gilt fuer alle Sprachen — Overrides nur dort, wo Text im Bild steckt.</span>
+        <span class="sep">·</span>
+        <label>Export-Sprache: <select id="asset-export-lang">${exportOpts}</select></label>
+        <button class="btn small" id="btn-asset-export" title="Alle fuer die Sprache gueltigen Assets als ZIP">📦 Assets als ZIP</button>
+      </div>
+    </section>
+    ${catSections}
+    <section class="card">
+      <h2>Screenshots <span class="muted">${shots.length} · mind. 5 empfohlen · 1920×1080</span></h2>
+      <div class="shot-grid">${shotCards || '<p class="muted">Noch keine Screenshots.</p>'}</div>
+      <label class="btn small">➕ Screenshot hinzufuegen${fileInput('id="shot-add"')}</label>
+    </section>`;
+
+  bindGrafikenHandlers(it);
+}
+
+function bindGrafikenHandlers(it) {
+  const platform = it.meta.platform;
+  const itemId = it.meta.item_id;
+  const reload = () => renderGrafiken(it);
+
+  const uploadTo = async (url, file, form = {}) => {
+    const fd = new FormData();
+    fd.append("file", file);
+    for (const [k, v] of Object.entries(form)) fd.append(k, v);
+    const r = await fetch(url, { method: "POST", body: fd });
+    if (!r.ok) {
+      let detail = `HTTP ${r.status}`;
+      try { const b = await r.json(); if (b && b.detail) detail = b.detail; } catch (_) {}
+      showToast("Upload fehlgeschlagen: " + detail, "error");
+      return false;
+    }
+    return true;
+  };
+
+  // Standard- und Per-Sprache-Uploads (alle file-inputs mit data-slot)
+  for (const inp of document.querySelectorAll('input[type="file"][data-slot]')) {
+    inp.addEventListener("change", async e => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const slot = e.target.dataset.slot;
+      const isDefault = e.target.dataset.default === "1";
+      const form = isDefault ? {} : { lang: e.target.dataset.lang };
+      if (await uploadTo(`/api/items/${platform}/${itemId}/assets/${slot}`, file, form)) {
+        showToast("Bild hochgeladen", "ok");
+        await reload();
+      }
+    });
+  }
+  // Standard-Bild loeschen
+  for (const b of document.querySelectorAll("[data-del-slot]")) {
+    b.addEventListener("click", async () => {
+      if (!confirm("Standard-Bild dieses Slots loeschen?")) return;
+      await fetch(`/api/items/${platform}/${itemId}/assets/${b.dataset.delSlot}`, { method: "DELETE" });
+      await reload();
+    });
+  }
+  // Override entfernen
+  for (const b of document.querySelectorAll(".chip-clear")) {
+    b.addEventListener("click", async () => {
+      const slot = b.dataset.clearSlot;
+      const lang = b.dataset.clearLang;
+      await fetch(`/api/items/${platform}/${itemId}/assets/${slot}?lang=${encodeURIComponent(lang)}`, { method: "DELETE" });
+      await reload();
+    });
+  }
+  // Screenshot hinzufuegen
+  const addShot = document.getElementById("shot-add");
+  if (addShot) addShot.addEventListener("change", async e => {
+    const file = e.target.files[0];
+    if (!file) return;
+    if (await uploadTo(`/api/items/${platform}/${itemId}/assets/screenshots`, file)) {
+      showToast("Screenshot hinzugefuegt", "ok");
+      await reload();
+    }
+  });
+  // Screenshot-Caption (on-blur)
+  for (const inp of document.querySelectorAll(".shot-caption")) {
+    inp.addEventListener("blur", async e => {
+      await fetch(`/api/items/${platform}/${itemId}/assets/screenshots/${e.target.dataset.shot}/caption`, {
+        method: "PUT", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: e.target.value }),
+      });
+      flashOk(e.target);
+    });
+  }
+  // Screenshot loeschen
+  for (const b of document.querySelectorAll("[data-shot-del]")) {
+    b.addEventListener("click", async () => {
+      if (!confirm("Screenshot loeschen?")) return;
+      await fetch(`/api/items/${platform}/${itemId}/assets/screenshots/${b.dataset.shotDel}`, { method: "DELETE" });
+      await reload();
+    });
+  }
+  // Reihenfolge (hoch/runter)
+  const moveShot = async (id, dir) => {
+    const ids = [...document.querySelectorAll(".shot-card")].map(c => parseInt(c.dataset.shot, 10));
+    const i = ids.indexOf(parseInt(id, 10));
+    const j = i + dir;
+    if (i < 0 || j < 0 || j >= ids.length) return;
+    [ids[i], ids[j]] = [ids[j], ids[i]];
+    await fetch(`/api/items/${platform}/${itemId}/assets/screenshots/reorder`, {
+      method: "PUT", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ordered_ids: ids }),
+    });
+    await reload();
+  };
+  for (const b of document.querySelectorAll("[data-shot-up]")) b.addEventListener("click", () => moveShot(b.dataset.shotUp, -1));
+  for (const b of document.querySelectorAll("[data-shot-down]")) b.addEventListener("click", () => moveShot(b.dataset.shotDown, 1));
+  // Export ZIP
+  const exBtn = document.getElementById("btn-asset-export");
+  if (exBtn) exBtn.addEventListener("click", () => {
+    const lang = document.getElementById("asset-export-lang").value;
+    const a = document.createElement("a");
+    a.href = `/api/items/${platform}/${itemId}/assets/export.zip?lang=${encodeURIComponent(lang)}`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  });
 }
 
 // --- Modal: Sprachen ---------------------------------------------------------

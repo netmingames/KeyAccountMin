@@ -18,13 +18,13 @@ import json
 from pathlib import Path
 
 import uvicorn
-from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, ValidationError
 
-from core import ea_exporter, edit_ops, exporter, glossary as glossary_mod, labels, schema, steam_codes, storage, translator
+from core import assets, ea_exporter, edit_ops, exporter, glossary as glossary_mod, labels, schema, steam_codes, storage, translator
 
 VERSION = "0.2.0"
 NAME = "Sid / KeyAccountMin"
@@ -735,6 +735,177 @@ def api_ea_export_zip(platform: str, item_id: str):
         media_type="application/zip",
         headers={"Content-Disposition": f'attachment; filename="{slug}_ea_bundle.zip"'},
     )
+
+
+# --- Assets / Screenshots (NT-564) ------------------------------------------
+#
+# Route-Reihenfolge ist wichtig: literale Pfade (screenshots, export.zip)
+# MUESSEN vor dem generischen /assets/{slot} stehen, sonst matched FastAPI
+# "screenshots"/"export.zip" als slot-Parameter.
+
+
+class _CaptionBody(BaseModel):
+    text: str
+    lang: str | None = None
+
+
+class _ReorderBody(BaseModel):
+    ordered_ids: list[int]
+
+
+def _ext_of(filename: str | None) -> str:
+    """Endung aus dem Upload-Dateinamen ziehen (ohne Punkt, lowercase)."""
+    ext = Path(filename or "").suffix.lstrip(".").lower()
+    if not ext:
+        raise HTTPException(status_code=400, detail="Datei ohne Endung — Format nicht erkennbar")
+    return ext
+
+
+@app.get("/api/assets/catalog")
+def api_assets_catalog() -> dict:
+    """Statischer Slot-Katalog (Sollmaße, localizable-Flag) fuers UI."""
+    return {"slots": assets.catalog()}
+
+
+@app.get("/api/items/{platform}/{item_id}/assets")
+def api_assets_status(platform: str, item_id: str) -> dict:
+    """Fuellstand-Uebersicht: pro Slot was vorhanden ist + Per-Sprache-Aufloesung."""
+    idir = _resolve_idir_with_meta(platform, item_id)
+    meta = edit_ops.read_meta(idir)
+    return assets.status(idir, meta.active_languages)
+
+
+@app.get("/api/items/{platform}/{item_id}/assets/export.zip")
+def api_assets_export_zip(platform: str, item_id: str, lang: str):
+    """ZIP mit allen fuer `lang` gueltigen Assets + Screenshots (Override sonst default)."""
+    idir = _resolve_idir_with_meta(platform, item_id)
+    try:
+        data = assets.export_zip(idir, lang)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    meta = edit_ops.read_meta(idir)
+    slug = storage._slugify(meta.name)
+    return Response(
+        content=data,
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{slug}_assets_{lang}.zip"'},
+    )
+
+
+@app.post("/api/items/{platform}/{item_id}/assets/screenshots")
+async def api_add_screenshot(
+    platform: str, item_id: str,
+    file: UploadFile = File(...), master_caption: str = Form(""),
+) -> dict:
+    idir = _resolve_idir_with_meta(platform, item_id)
+    data = await file.read()
+    ext = _ext_of(file.filename)
+    try:
+        shot = assets.add_screenshot(idir, data, ext=ext, master_caption=master_caption)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {"ok": True, "screenshot": shot.model_dump()}
+
+
+@app.put("/api/items/{platform}/{item_id}/assets/screenshots/reorder")
+def api_reorder_screenshots(platform: str, item_id: str, body: _ReorderBody) -> dict:
+    idir = _resolve_idir_with_meta(platform, item_id)
+    try:
+        shots = assets.reorder_screenshots(idir, body.ordered_ids)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {"ok": True, "screenshots": [s.model_dump() for s in shots]}
+
+
+@app.post("/api/items/{platform}/{item_id}/assets/screenshots/{shot_id}/override")
+async def api_screenshot_override(
+    platform: str, item_id: str, shot_id: int,
+    file: UploadFile = File(...), lang: str = Form(...),
+) -> dict:
+    idir = _resolve_idir_with_meta(platform, item_id)
+    data = await file.read()
+    ext = _ext_of(file.filename)
+    try:
+        shot = assets.set_screenshot_override(idir, shot_id, lang, data, ext=ext)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {"ok": True, "screenshot": shot.model_dump()}
+
+
+@app.put("/api/items/{platform}/{item_id}/assets/screenshots/{shot_id}/caption")
+def api_screenshot_caption(platform: str, item_id: str, shot_id: int, body: _CaptionBody) -> dict:
+    idir = _resolve_idir_with_meta(platform, item_id)
+    try:
+        shot = assets.set_screenshot_caption(idir, shot_id, body.text, lang=body.lang)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {"ok": True, "screenshot": shot.model_dump()}
+
+
+@app.get("/api/items/{platform}/{item_id}/assets/screenshots/{shot_id}/file")
+def api_screenshot_file(platform: str, item_id: str, shot_id: int, lang: str | None = None):
+    idir = _resolve_idir(platform, item_id)
+    manifest = assets.load_manifest(idir)
+    shot = next((s for s in manifest.screenshots if s.id == shot_id), None)
+    if shot is None:
+        raise HTTPException(status_code=404, detail=f"Screenshot {shot_id} nicht gefunden")
+    entry = None
+    if lang and lang != assets.DEFAULT_KEY:
+        entry = shot.localized.get(lang)
+    if entry is None:
+        entry = shot.default
+    if entry is None:
+        raise HTTPException(status_code=404, detail="Kein Bild fuer diesen Screenshot")
+    p = idir / "assets" / "screenshots" / entry.filename
+    if not p.exists():
+        raise HTTPException(status_code=404, detail="Bilddatei fehlt")
+    return FileResponse(p)
+
+
+@app.delete("/api/items/{platform}/{item_id}/assets/screenshots/{shot_id}")
+def api_delete_screenshot(platform: str, item_id: str, shot_id: int) -> dict:
+    idir = _resolve_idir_with_meta(platform, item_id)
+    removed = assets.delete_screenshot(idir, shot_id)
+    if not removed:
+        raise HTTPException(status_code=404, detail=f"Screenshot {shot_id} nicht gefunden")
+    return {"ok": True}
+
+
+@app.post("/api/items/{platform}/{item_id}/assets/{slot}")
+async def api_upload_asset(
+    platform: str, item_id: str, slot: str,
+    file: UploadFile = File(...), lang: str | None = Form(None),
+) -> dict:
+    idir = _resolve_idir_with_meta(platform, item_id)
+    data = await file.read()
+    ext = _ext_of(file.filename)
+    try:
+        entry = assets.store_asset(idir, slot, data, lang=lang, ext=ext)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {"ok": True, "entry": entry.model_dump()}
+
+
+@app.get("/api/items/{platform}/{item_id}/assets/{slot}/file")
+def api_asset_file(platform: str, item_id: str, slot: str, lang: str | None = None):
+    idir = _resolve_idir(platform, item_id)
+    try:
+        p = assets.resolve_asset(idir, slot, lang)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    if p is None:
+        raise HTTPException(status_code=404, detail="Kein Asset fuer diesen Slot/diese Sprache")
+    return FileResponse(p)
+
+
+@app.delete("/api/items/{platform}/{item_id}/assets/{slot}")
+def api_delete_asset(platform: str, item_id: str, slot: str, lang: str | None = None) -> dict:
+    idir = _resolve_idir_with_meta(platform, item_id)
+    try:
+        removed = assets.delete_asset(idir, slot, lang)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {"ok": True, "removed": removed}
 
 
 @app.post("/api/items")

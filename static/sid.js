@@ -310,12 +310,23 @@ function bindInhaltHandlers(it) {
   const eaCb = document.getElementById("toggle-ea");
   if (eaCb) eaCb.addEventListener("change", async e => {
     const enabled = e.target.checked;
-    const r = await fetch(`/api/items/${it.meta.platform}/${it.meta.item_id}/early-access`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ enabled }),
-    }).then(r => r.json());
-    if (!r.ok) { alert("Fehler beim EA-Toggle"); return; }
+    let data = null;
+    try {
+      const resp = await fetch(`/api/items/${it.meta.platform}/${it.meta.item_id}/early-access`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled }),
+      });
+      if (!resp.ok) {
+        alert(`Fehler beim EA-Toggle (HTTP ${resp.status})`);
+        return;
+      }
+      data = await resp.json();
+    } catch (err) {
+      alert(`Fehler beim EA-Toggle: ${err.message || err}`);
+      return;
+    }
+    if (!data || !data.ok) { alert("Fehler beim EA-Toggle"); return; }
     delete state.itemCache[state.currentItemKey];
     await renderContent();
   });
@@ -807,12 +818,23 @@ async function openLanguagesModal() {
   document.getElementById("btn-save-langs").addEventListener("click", async () => {
     const langs = [...document.querySelectorAll(".lang-check input:not(:disabled):checked")].map(c => c.value);
     langs.unshift(masterLang);
-    const r = await fetch(`/api/items/${platform}/${itemId}/active-languages`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ languages: langs }),
-    }).then(r => r.json());
-    if (!r.ok) { alert("Speichern fehlgeschlagen"); return; }
+    let r = null;
+    try {
+      const resp = await fetch(`/api/items/${platform}/${itemId}/active-languages`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ languages: langs }),
+      });
+      if (!resp.ok) {
+        alert(`Speichern fehlgeschlagen (HTTP ${resp.status})`);
+        return;
+      }
+      r = await resp.json();
+    } catch (err) {
+      alert(`Speichern fehlgeschlagen: ${err.message || err}`);
+      return;
+    }
+    if (!r || !r.ok) { alert("Speichern fehlgeschlagen"); return; }
     closeModal();
     delete state.itemCache[state.currentItemKey];
     // items neu laden (active_languages-Liste hat sich geaendert)

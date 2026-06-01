@@ -7,6 +7,16 @@
       "note": "Steam-Spieltitel — in allen Sprachen woertlich uebernehmen, nicht uebersetzen"
     },
     {
+      "term": "Torschuetzenkoenig",
+      "rule": "keep",
+      "note": "Offizieller DE-Titel des Spiels (In-Game-Loka) — locked, damit Uebersetzungen die offizielle Wortmarke nicht driften"
+    },
+    {
+      "term": "Torschützenkönig",
+      "rule": "keep",
+      "note": "Offizieller DE-Titel mit Umlauten (= In-Game-Schreibweise) — synonym zu 'Torschuetzenkoenig', identische keep-Regel"
+    },
+    {
       "term": "netmin games",
       "rule": "keep",
       "note": "Firmenname"

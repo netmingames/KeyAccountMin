@@ -611,13 +611,17 @@ def get_screenshot_details(idir: Path, shot_id: int) -> dict:
     # auf default zurueckfallen — das Modal soll konsistent dazu sein.
     sdir = _assets_dir(idir) / "screenshots"
     present = {lang: af for lang, af in shot.localized.items() if (sdir / af.filename).exists()}
+    # NT-564 (Lisbeth 19:03 LOW): has_default/default_size_ok auch an der DATEI
+    # festmachen — ein geloeschtes Default-Bild darf nicht als vorhanden/valide
+    # erscheinen, da die datei-basierte Aufloesung es nicht mehr ausliefert.
+    default_present = shot.default is not None and (sdir / shot.default.filename).exists()
     return {
         "id": shot.id,
         "order": shot.order,
         "master_caption": shot.master_caption,
         "captions": dict(shot.captions),
-        "has_default": shot.default is not None,
-        "default_size_ok": shot.default.size_ok if shot.default else None,
+        "has_default": default_present,
+        "default_size_ok": shot.default.size_ok if default_present else None,
         "has_override": {lang: True for lang in present},
         # NT-564 Pass 5: pro Override die Maß-/Format-Validierung mitliefern,
         # damit das Per-Sprache-Modal einen falsch dimensionierten Screenshot-

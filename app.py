@@ -505,7 +505,13 @@ def _stale_or_empty_fields(idir: Path, lang: str) -> list[str]:
     Nur Master-Felder mit Inhalt sind Kandidaten. Existiert keine Translation,
     sind alle Content-Felder faellig.
     """
-    master = edit_ops.read_master(idir)
+    # NT-563 (Lisbeth 19:01 LOW): auch der Master-Read darf hier nicht als 500
+    # durchschlagen — translate_item_lang meldet den Master-Fehler dann per
+    # Sprache im Stream.
+    try:
+        master = edit_ops.read_master(idir)
+    except Exception:  # noqa: BLE001
+        return []
     content = [f for f, v in master.fields.items() if v]
     tpath = storage.translation_path(idir, lang)
     if not tpath.exists():
@@ -521,6 +527,11 @@ def _stale_or_empty_fields(idir: Path, lang: str) -> list[str]:
     out: list[str] = []
     for f in content:
         tf = t.fields.get(f)
+        # NT-564 (Lisbeth 19:03 LOW): manuell editierte Felder NIE in die
+        # only_stale-Liste — sie sind heilig, translate_item_lang ueberspringt
+        # sie ohnehin, aber so taucht das Feld erst gar nicht auf.
+        if tf is not None and tf.manually_edited:
+            continue
         if tf is None or not tf.value or tf.stale:
             out.append(f)
     return out
@@ -561,7 +572,11 @@ async def api_translate_stream(
     if langs is not None:
         requested = [c.strip() for c in langs.split(",") if c.strip()]
         active_set = set(target_langs)
-        target_langs = [c for c in requested if c in active_set]
+        # NT-563 (Lisbeth 19:01 LOW): dedupliziert, Reihenfolge erhalten — sonst
+        # uebersetzt ein doppelter Query-Wert die Sprache zweimal.
+        seen: set[str] = set()
+        target_langs = [c for c in requested
+                        if c in active_set and not (c in seen or seen.add(c))]
         if not target_langs:
             raise HTTPException(
                 status_code=400,

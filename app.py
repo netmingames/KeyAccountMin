@@ -66,12 +66,34 @@ def version() -> dict:
     return {"name": NAME, "version": VERSION}
 
 
+def _asset_version() -> str:
+    """Cache-Bust-Version fuer sid.js/sid.css = neueste mtime der Static-Assets.
+
+    Aendert sich bei jedem Edit an sid.js/sid.css -> der Browser zieht nach
+    einem Deploy garantiert das frische JS/CSS (sonst bleibt altes JS im Cache
+    haengen, bis der User hart neu laedt). Fallback VERSION, falls Static-Dir
+    unlesbar.
+    """
+    try:
+        mtimes = [
+            (ROOT / "static" / f).stat().st_mtime
+            for f in ("sid.js", "sid.css")
+            if (ROOT / "static" / f).exists()
+        ]
+        return str(int(max(mtimes))) if mtimes else VERSION
+    except OSError:
+        return VERSION
+
+
 @app.get("/")
 def index(request: Request):
     items = _list_all_items()
     return templates.TemplateResponse(
         "index.html",
-        {"request": request, "name": NAME, "version": VERSION, "items": items},
+        {
+            "request": request, "name": NAME, "version": VERSION,
+            "items": items, "asset_v": _asset_version(),
+        },
     )
 
 

@@ -1204,14 +1204,14 @@ async function openTranslateAllModal(it) {
   const itemId = it.meta.item_id;
   const targetLangs = it.meta.active_languages.filter(l => l !== it.meta.master_lang);
 
-  // NT-568: Sprachauswahl statt pauschal. Vorausgewaehlt sind die Sprachen mit
-  // veralteten/leeren Feldern (stale > 0).
+  // Sprachauswahl: ALLE aktiven Zielsprachen sind standardmaessig angehakt
+  // (Thomas-Wunsch 02.06.2026) — der User nimmt gezielt die Sprachen RAUS, die er
+  // NICHT anfassen will. Die Schnellwahl "Nur veraltete" bleibt als Komfort
+  // erhalten, falls man doch nur die pending-Sprachen will.
   const langRows = targetLangs.map(code => {
     const l = state.langByCode[code];
     const s = it.translations[code] || {};
-    // NT-564/568 (Lisbeth 19:14/19:22): exakt auf 'pending' vorauswaehlen
-    // (leer ODER stale, ohne Handedits) — deckt auch leer-aber-nicht-stale ab.
-    const needs = !it.translations[code] || (s.pending || 0) > 0;
+    const needs = true;  // alle aktiven vorausgewaehlt (Thomas 02.06.2026)
     const info = (s.filled != null && s.total != null)
       ? `${s.filled}/${s.total}${s.stale ? `, ${s.stale} stale` : ""}` : "";
     return `<tr data-lang="${code}">

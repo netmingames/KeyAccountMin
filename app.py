@@ -73,14 +73,17 @@ def _asset_version() -> str:
     einem Deploy garantiert das frische JS/CSS (sonst bleibt altes JS im Cache
     haengen, bis der User hart neu laedt). Fallback VERSION, falls Static-Dir
     unlesbar.
+
+    [NT-576 Lisbeth-Fix 05.06.2026] st_mtime_ns statt int(st_mtime), damit
+    Subsekunden-Edits/Deploys garantiert eine neue Versionsnummer erzeugen.
     """
     try:
         mtimes = [
-            (ROOT / "static" / f).stat().st_mtime
+            (ROOT / "static" / f).stat().st_mtime_ns
             for f in ("sid.js", "sid.css")
             if (ROOT / "static" / f).exists()
         ]
-        return str(int(max(mtimes))) if mtimes else VERSION
+        return str(max(mtimes)) if mtimes else VERSION
     except OSError:
         return VERSION
 
